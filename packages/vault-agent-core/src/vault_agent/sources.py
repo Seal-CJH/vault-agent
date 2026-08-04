@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
+import ipaddress
+import socket
 from typing import Callable
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+
+MAX_HTML_BYTES = 2_000_000
 
 
 @dataclass(frozen=True)
@@ -102,8 +107,9 @@ def inspect_source(
             provenance=f"Book: {title}" + (f" — {author}" if author else ""),
             content_language=content_language, text=(excerpt or "").strip(),
         )
-    if not url or urlparse(url).scheme not in {"http", "https"}:
+    if not url:
         raise ValueError(f"{kind} sources require a public http(s) URL")
+    _validate_public_url(url)
     page = _ReadablePage()
     html = (fetch_html or _fetch_html)(url)
     page.feed(html)
@@ -124,6 +130,39 @@ def inspect_source(
 
 
 def _fetch_html(url: str) -> str:
+    _validate_public_url(url, resolve_host=True)
     request = Request(url, headers={"User-Agent": "Vault-Agent/0.2 (+local source inspection)"})
-    with urlopen(request, timeout=15) as response:  # nosec B310: explicit user-confirmed public URL
-        return response.read().decode(response.headers.get_content_charset() or "utf-8", errors="replace")
+    with build_opener(_PublicRedirects()).open(request, timeout=15) as response:  # nosec B310: URL and redirects are validated
+        body = response.read(MAX_HTML_BYTES + 1)
+        if len(body) > MAX_HTML_BYTES:
+            raise ValueError("source page exceeds the 2 MB extraction limit")
+        return body.decode(response.headers.get_content_charset() or "utf-8", errors="replace")
+
+
+def _validate_public_url(url: str, resolve_host: bool = False) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("source URL must be a public http(s) URL")
+    host = parsed.hostname.rstrip(".").lower()
+    if host == "localhost" or host.endswith(".localhost"):
+        raise ValueError("source URL must resolve to a public address")
+    try:
+        address = ipaddress.ip_address(host)
+        if not address.is_global:
+            raise ValueError("source URL must resolve to a public address")
+    except ValueError as error:
+        if "public address" in str(error):
+            raise
+        if resolve_host:
+            try:
+                addresses = {item[4][0] for item in socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)}
+            except socket.gaierror as resolve_error:
+                raise ValueError("source URL host could not be resolved") from resolve_error
+            if not addresses or any(not ipaddress.ip_address(address).is_global for address in addresses):
+                raise ValueError("source URL must resolve only to public addresses")
+
+
+class _PublicRedirects(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _validate_public_url(newurl, resolve_host=True)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)

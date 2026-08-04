@@ -64,3 +64,5 @@ The core never directly writes Questions, Claims, Decisions, Experiments, or Rev
 ## Source handling
 
 When a user sends a public article URL, the core locally extracts readable page text and records its URL, title, author, and language as provenance. Public video URLs are limited to page metadata: it never downloads media or creates a transcript. Book discussions use only the title, author, and excerpt supplied by the user; the core does not retrieve book text. If a source cannot be inspected, the discussion continues and asks for an excerpt or transcript instead of fabricating content.
+
+Source fetching accepts only public HTTP(S) URLs. The Core rejects local/private addresses and credential-bearing URLs, revalidates redirects, and limits a fetched page to 2 MB.

@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import patch
 
-from vault_agent.sources import inspect_source
+from vault_agent.sources import _validate_public_url, inspect_source
 
 
 ARTICLE_HTML = """
@@ -58,3 +59,17 @@ class SourceInspectionTests(unittest.TestCase):
         )
 
         self.assertEqual(material.title, "Plain page title")
+
+    def test_rejects_local_and_private_addresses_before_fetching(self):
+        for url in ("http://localhost/article", "http://127.0.0.1/article", "http://192.168.1.10/article", "http://[::1]/article"):
+            with self.subTest(url=url), self.assertRaisesRegex(ValueError, "public"):
+                inspect_source(kind="article", url=url, fetch_html=lambda _: self.fail("must not fetch a local URL"))
+
+    def test_rejects_userinfo_in_public_urls(self):
+        with self.assertRaisesRegex(ValueError, "public"):
+            inspect_source(kind="article", url="https://token@example.test/article", fetch_html=lambda _: self.fail("must not fetch"))
+
+    def test_rejects_hostnames_that_resolve_to_private_addresses(self):
+        with patch("vault_agent.sources.socket.getaddrinfo", return_value=[(None, None, None, None, ("10.0.0.8", 443))]):
+            with self.assertRaisesRegex(ValueError, "public"):
+                _validate_public_url("https://private.example/article", resolve_host=True)
