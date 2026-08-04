@@ -38,6 +38,17 @@ def prepare_draft(store: SessionStore, session_id: str, provider) -> Packet:
     try:
         packet = parse_packet(raw)
         validate_terms(packet.tags, packet.aliases)
+        _validate_source_language(packet, session.sources)
     except (PacketError, ValueError) as error:
         raise DraftError(f"model returned an invalid ingest packet: {error}") from error
     return packet
+
+
+def _validate_source_language(packet: Packet, sources: list[dict]) -> None:
+    """A single packet cannot safely translate or combine known source languages."""
+    languages = {str(source["content_language"]) for source in sources if source.get("content_language")}
+    if len(languages) > 1:
+        raise DraftError("sources use multiple content languages; prepare separate packets per source language")
+    if languages and packet.content_language != next(iter(languages)):
+        expected = next(iter(languages))
+        raise DraftError(f"packet content_language must match the known source language: {expected}")
