@@ -1,4 +1,4 @@
-import { App, ItemView, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from "obsidian";
+import { App, ItemView, MarkdownRenderer, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from "obsidian";
 import { ChildProcess, execFile, spawn } from "child_process";
 
 const VIEW_TYPE = "vault-agent";
@@ -34,7 +34,8 @@ class VaultAgentView extends ItemView {
     await this.refreshModel();
   }
   async refreshModel() { try { const c = await this.plugin.providerConfig(); this.modelChip.setText(`DeepSeek · ${c.model.replace("deepseek-", "")} · Thinking ${c.thinking ? "on" : "off"}`); } catch { this.modelChip.setText("CLI unavailable — check settings"); } }
-  private append(role: string, text = "") { const card = this.thread.createDiv({ cls: `vault-agent-message vault-agent-${role}` }); const meta = card.createDiv({ cls: "vault-agent-message-meta" }); meta.createDiv({ cls: "vault-agent-role", text: role === "user" ? "You" : "Vault Agent" }); const body = card.createDiv({ cls: "vault-agent-body", text }); const copy = meta.createEl("button", { text: "Copy", cls: "vault-agent-copy" }); copy.onclick = async () => { await navigator.clipboard.writeText(body.textContent ?? ""); copy.setText("Copied"); window.setTimeout(() => copy.setText("Copy"), 1200); }; this.thread.scrollTop = this.thread.scrollHeight; return body; }
+  private append(role: string, text = "") { const card = this.thread.createDiv({ cls: `vault-agent-message vault-agent-${role}` }); const meta = card.createDiv({ cls: "vault-agent-message-meta" }); meta.createDiv({ cls: "vault-agent-role", text: role === "user" ? "You" : "Vault Agent" }); const body = card.createDiv({ cls: "vault-agent-body", text }); body.dataset.markdown = text; const copy = meta.createEl("button", { text: "Copy", cls: "vault-agent-copy" }); copy.onclick = async () => { await navigator.clipboard.writeText(body.dataset.markdown ?? body.textContent ?? ""); copy.setText("Copied"); window.setTimeout(() => copy.setText("Copy"), 1200); }; this.thread.scrollTop = this.thread.scrollHeight; return body; }
+  private async renderMarkdown(body: HTMLElement) { const markdown = body.dataset.markdown; if (!markdown) return; body.empty(); await MarkdownRenderer.render(this.app, markdown, body, "", this); }
   private async send(language = "zh-CN") {
     const message = this.composer.value.trim(); if (!message || this.process) return;
     this.thread.querySelector(".vault-agent-empty")?.remove(); this.append("user", message); const body = this.append("agent", "Preparing vault context…"); this.composer.value = "";
@@ -42,9 +43,9 @@ class VaultAgentView extends ItemView {
     try { this.sessionId ??= await this.plugin.startSession(this.vaultPath(), language); } catch (error) { body.setText(`Vault index could not start: ${error instanceof Error ? error.message : String(error)}`); this.stop(); return; }
     this.process = spawn(this.plugin.settings.cliPath, ["session", "turn", "--vault", this.vaultPath(), "--session-id", this.sessionId, "--confirm", "--message", message]);
     let buffer = "";
-    this.process.stdout?.on("data", chunk => { buffer += chunk.toString(); const lines = buffer.split("\n"); buffer = lines.pop() ?? ""; lines.filter(Boolean).forEach(line => { try { const event = JSON.parse(line); if (event.type === "text_delta") { if (body.textContent === "Preparing vault context…") body.empty(); body.appendText(event.delta); this.thread.scrollTop = this.thread.scrollHeight; } } catch { /* protocol errors go to stderr */ } }); });
-    this.process.stderr?.on("data", chunk => { body.setText(`Setup error: ${chunk.toString().trim()}`); });
-    this.process.on("close", () => { this.process = null; this.sendButton.setText("↑ Send"); this.sendButton.removeClass("mod-warning"); if (body.textContent === "Preparing vault context…") body.setText("No response received."); });
+    this.process.stdout?.on("data", chunk => { buffer += chunk.toString(); const lines = buffer.split("\n"); buffer = lines.pop() ?? ""; lines.filter(Boolean).forEach(line => { try { const event = JSON.parse(line); if (event.type === "text_delta") { if (body.textContent === "Preparing vault context…") body.empty(); body.dataset.markdown = (body.dataset.markdown === "Preparing vault context…" ? "" : body.dataset.markdown ?? "") + event.delta; body.appendText(event.delta); this.thread.scrollTop = this.thread.scrollHeight; } } catch { /* protocol errors go to stderr */ } }); });
+    this.process.stderr?.on("data", chunk => { const error = `Setup error: ${chunk.toString().trim()}`; body.dataset.markdown = ""; body.setText(error); });
+    this.process.on("close", () => { this.process = null; this.sendButton.setText("↑ Send"); this.sendButton.removeClass("mod-warning"); if (body.textContent === "Preparing vault context…") body.setText("No response received."); else void this.renderMarkdown(body); });
     this.process.on("error", error => { body.setText(`CLI could not start: ${error.message}. Check Vault Agent settings.`); });
   }
   private stop() { this.process?.kill("SIGTERM"); this.process = null; this.sendButton.setText("↑ Send"); this.sendButton.removeClass("mod-warning"); }

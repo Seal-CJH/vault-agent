@@ -14,6 +14,7 @@ from .provider import provider_from_settings
 from .discussion import discuss, stream_discuss
 from .session import SessionStore
 from .vault_index import VaultIndex
+from .draft import prepare_draft
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -39,12 +40,13 @@ def main(argv: list[str] | None = None) -> int:
     discussion.add_argument("--confirm", action="store_true", help="explicitly authorizes this remote send")
     discussion.add_argument("--stream", action="store_true", help="emit newline-delimited streaming events")
     session = commands.add_parser("session", help="manage local vault-aware discussion sessions")
-    session.add_argument("action", choices=["start", "turn"])
+    session.add_argument("action", choices=["start", "turn", "draft", "stage"])
     session.add_argument("--vault", required=True, type=Path)
     session.add_argument("--source-language", choices=["zh-CN", "en"])
     session.add_argument("--session-id")
     session.add_argument("--message")
     session.add_argument("--confirm", action="store_true")
+    session.add_argument("--apply", action="store_true")
     args = parser.parse_args(argv)
     if args.command == "stage":
         result = stage_packet(args.vault, args.packet.read_text(encoding="utf-8"), args.apply)
@@ -100,6 +102,19 @@ def main(argv: list[str] | None = None) -> int:
                 parser.error("session start requires --source-language")
             created = store.create(args.source_language)
             print(json.dumps({"session_id": created.id, "indexed": True}))
+            return 0
+        if args.action == "draft":
+            if not args.session_id or not args.confirm:
+                parser.error("session draft requires --session-id and --confirm")
+            packet = prepare_draft(store, args.session_id, provider_from_settings(load_key("deepseek"), load_settings()))
+            store.save_draft(args.session_id, packet.raw)
+            print(json.dumps({"type": "draft", "packet": packet.raw, "title": packet.title}, ensure_ascii=False))
+            return 0
+        if args.action == "stage":
+            if not args.session_id or not args.apply:
+                parser.error("session stage requires --session-id and --apply")
+            result = stage_packet(args.vault, store.load_draft(args.session_id), apply=True)
+            print(json.dumps({"type": "staged", "path": str(result.path)}, ensure_ascii=False))
             return 0
         if not args.session_id or not args.message or not args.confirm:
             parser.error("session turn requires --session-id, --message, and --confirm")

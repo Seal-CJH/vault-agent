@@ -57,3 +57,12 @@ class SessionStore:
     def _save(self, session: Session) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
         (self.directory / f"{session.id}.json").write_text(json.dumps(asdict(session), ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def save_draft(self, session_id: str, raw: str) -> Path:
+        path = self.directory.parent / "drafts" / f"{session_id}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(raw, encoding="utf-8")
+        return path
+
+    def load_draft(self, session_id: str) -> str:
+        return (self.directory.parent / "drafts" / f"{session_id}.md").read_text(encoding="utf-8")
