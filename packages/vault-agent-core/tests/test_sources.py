@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch
+from pathlib import Path
 
 from vault_agent.sources import _validate_public_url, inspect_source
 
@@ -15,6 +16,14 @@ ARTICLE_HTML = """
 
 
 class SourceInspectionTests(unittest.TestCase):
+    def test_parses_sanitized_english_and_chinese_article_fixtures(self):
+        fixture_root = Path(__file__).parents[3] / "fixtures" / "sources"
+        for name, language, phrase in (("english-article.html", "en", "Knowledge continuity"), ("chinese-article.html", "zh-CN", "知识连续性")):
+            with self.subTest(name=name):
+                material = inspect_source(kind="article", url=f"https://example.test/{name}", fetch_html=lambda _: (fixture_root / name).read_text(encoding="utf-8"))
+                self.assertEqual(material.content_language, language)
+                self.assertIn(phrase, material.text)
+
     def test_extracts_public_article_metadata_and_readable_text(self):
         material = inspect_source(
             kind="article",
