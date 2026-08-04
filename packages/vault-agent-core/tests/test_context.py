@@ -73,3 +73,24 @@ class ContextCompilerTests(unittest.TestCase):
 
             self.assertIn("<vault-relationships>", bundle.prompt)
             self.assertIn("03_Wiki/continuity.md → [[LLM]], [[agent]]", bundle.prompt)
+
+    def test_excludes_local_only_note_metadata_and_content_from_remote_context(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "03_Wiki").mkdir(parents=True)
+            (root / "03_Wiki" / "public.md").write_text(
+                "# Public knowledge\n\nConnect to [[LLM]].", encoding="utf-8"
+            )
+            (root / "03_Wiki" / "private.md").write_text(
+                "---\nai_sharing: local-only\ntags:\n  - private/reflection\n---\n# Private reflection\n\nSECRET_PRIVATE_THOUGHT connects to [[private-concept]].", encoding="utf-8"
+            )
+            index = VaultIndex(root, root / ".vault-agent.sqlite")
+            index.rebuild()
+
+            bundle = ContextCompiler(index).compile("private reflection")
+
+            self.assertIn("Public knowledge", bundle.prompt)
+            self.assertNotIn("Private reflection", bundle.prompt)
+            self.assertNotIn("SECRET_PRIVATE_THOUGHT", bundle.prompt)
+            self.assertNotIn("private/reflection", bundle.prompt)
+            self.assertNotIn("private-concept", bundle.prompt)

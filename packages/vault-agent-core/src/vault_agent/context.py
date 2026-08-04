@@ -20,8 +20,8 @@ class ContextCompiler:
         self.max_catalog_chars = max_catalog_chars
 
     def compile(self, query: str) -> ContextBundle:
-        governance = self.index.governance_documents()
-        related = self.index.search(query)
+        governance = [document for document in self.index.governance_documents() if document.ai_sharing == "provider-allowed"]
+        related = self.index.search(query, provider_allowed_only=True)
         seen: set[str] = set()
         documents: list[VaultDocument] = []
         for document in governance + related:
@@ -34,7 +34,7 @@ class ContextCompiler:
         relations = [f"{document.path} → " + ", ".join(f"[[{link}]]" for link in document.links) for document in documents if document.links]
         if relations:
             sections.append("<vault-relationships>\n" + "\n".join(relations) + "\n</vault-relationships>")
-        profile = self.index.profile()
+        profile = self.index.profile(provider_allowed_only=True)
         profile_lines = ["documents by directory: " + ", ".join(f"{name}: {count}" for name, count in profile["directories"])]
         if profile["tags"]:
             profile_lines.append("frequent tags: " + ", ".join(f"{name}: {count}" for name, count in profile["tags"]))
@@ -44,7 +44,7 @@ class ContextCompiler:
             sections.append("<vault-profile>\n" + "\n".join(profile_lines) + "\n</vault-profile>")
         catalog_lines: list[str] = []
         used = 0
-        for document in self.index.catalog():
+        for document in self.index.catalog(provider_allowed_only=True):
             metadata = []
             if document.tags:
                 metadata.append("tags: " + ", ".join(document.tags))

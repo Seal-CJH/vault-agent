@@ -18,6 +18,7 @@ class VaultDocument:
     tags: list[str]
     aliases: list[str]
     links: list[str]
+    ai_sharing: str = "provider-allowed"
 
 
 class VaultIndex:
@@ -30,11 +31,11 @@ class VaultIndex:
     def _connect(self) -> sqlite3.Connection:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self.database_path)
-        expected = ["path", "title", "content", "tags", "aliases", "links"]
+        expected = ["path", "title", "content", "tags", "aliases", "links", "ai_sharing"]
         existing = [row[1] for row in connection.execute("PRAGMA table_info(documents)").fetchall()]
         if existing and existing != expected:
             connection.execute("DROP TABLE documents")
-        connection.execute("CREATE VIRTUAL TABLE IF NOT EXISTS documents USING fts5(path UNINDEXED, title, content, tags, aliases, links)")
+        connection.execute("CREATE VIRTUAL TABLE IF NOT EXISTS documents USING fts5(path UNINDEXED, title, content, tags, aliases, links, ai_sharing UNINDEXED)")
         return connection
 
     def rebuild(self) -> int:
@@ -42,40 +43,42 @@ class VaultIndex:
         with self._connect() as connection:
             connection.execute("DELETE FROM documents")
             connection.executemany(
-                "INSERT INTO documents(path, title, content, tags, aliases, links) VALUES (?, ?, ?, ?, ?, ?)",
-                [(d.path, d.title, d.content, " ".join(d.tags), " ".join(d.aliases), " ".join(d.links)) for d in documents],
+                "INSERT INTO documents(path, title, content, tags, aliases, links, ai_sharing) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [(d.path, d.title, d.content, " ".join(d.tags), " ".join(d.aliases), " ".join(d.links), d.ai_sharing) for d in documents],
             )
         return len(documents)
 
-    def search(self, query: str, limit: int = 8) -> list[VaultDocument]:
+    def search(self, query: str, limit: int = 8, provider_allowed_only: bool = False) -> list[VaultDocument]:
         terms = re.findall(r"[\w-]+", query, flags=re.UNICODE)
         if not terms:
             return []
         fts_query = " OR ".join(f'"{term}"' for term in terms)
         with self._connect() as connection:
+            where = "documents MATCH ?" + (" AND ai_sharing = 'provider-allowed'" if provider_allowed_only else "")
             rows = connection.execute(
-                "SELECT path, title, content, tags, aliases, links FROM documents WHERE documents MATCH ? ORDER BY rank LIMIT ?",
+                f"SELECT path, title, content, tags, aliases, links, ai_sharing FROM documents WHERE {where} ORDER BY rank LIMIT ?",
                 (fts_query, limit),
             ).fetchall()
-        return [VaultDocument(row[0], row[1], row[2], row[3].split(), row[4].split(), row[5].split()) for row in rows]
+        return [VaultDocument(row[0], row[1], row[2], row[3].split(), row[4].split(), row[5].split(), row[6]) for row in rows]
 
-    def catalog(self, limit: int = 400) -> list[VaultDocument]:
+    def catalog(self, limit: int = 400, provider_allowed_only: bool = False) -> list[VaultDocument]:
         """Return lightweight metadata for vault-wide awareness, never note bodies."""
         with self._connect() as connection:
+            where = "WHERE ai_sharing = 'provider-allowed'" if provider_allowed_only else ""
             rows = connection.execute(
-                "SELECT path, title, content, tags, aliases, links FROM documents ORDER BY path LIMIT ?", (limit,)
+                f"SELECT path, title, content, tags, aliases, links, ai_sharing FROM documents {where} ORDER BY path LIMIT ?", (limit,)
             ).fetchall()
-        return [VaultDocument(row[0], row[1], "", row[3].split(), row[4].split(), row[5].split()) for row in rows]
+        return [VaultDocument(row[0], row[1], "", row[3].split(), row[4].split(), row[5].split(), row[6]) for row in rows]
 
     def all_documents(self) -> list[VaultDocument]:
         """Return locally indexed documents for deterministic, read-only audits."""
         with self._connect() as connection:
-            rows = connection.execute("SELECT path, title, content, tags, aliases, links FROM documents ORDER BY path").fetchall()
-        return [VaultDocument(row[0], row[1], row[2], row[3].split(), row[4].split(), row[5].split()) for row in rows]
+            rows = connection.execute("SELECT path, title, content, tags, aliases, links, ai_sharing FROM documents ORDER BY path").fetchall()
+        return [VaultDocument(row[0], row[1], row[2], row[3].split(), row[4].split(), row[5].split(), row[6]) for row in rows]
 
-    def profile(self, limit: int = 12) -> dict[str, list[tuple[str, int]]]:
+    def profile(self, limit: int = 12, provider_allowed_only: bool = False) -> dict[str, list[tuple[str, int]]]:
         """Return local, metadata-only structure for vault-wide context awareness."""
-        documents = self.catalog(limit=10_000)
+        documents = self.catalog(limit=10_000, provider_allowed_only=provider_allowed_only)
         directories = Counter(document.path.split("/", 1)[0] for document in documents)
         tags = Counter(tag for document in documents for tag in document.tags)
         links = Counter(link for document in documents for link in document.links)
@@ -104,7 +107,18 @@ class VaultIndex:
         tags = self._frontmatter_list(content, "tags")
         aliases = self._frontmatter_list(content, "aliases")
         links = [match.group(1).strip() for match in re.finditer(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]", content)]
-        return VaultDocument(relative, title, content, tags, aliases, links)
+        ai_sharing = self._frontmatter_value(content, "ai_sharing") or "provider-allowed"
+        return VaultDocument(relative, title, content, tags, aliases, links, ai_sharing)
+
+    @staticmethod
+    def _frontmatter_value(content: str, key: str) -> str | None:
+        match = re.match(r"---\n(.*?)\n---", content, re.DOTALL)
+        if not match:
+            return None
+        for line in match.group(1).splitlines():
+            if line.startswith(f"{key}:"):
+                return line.split(":", 1)[1].strip().strip('"\'') or None
+        return None
 
     @staticmethod
     def _frontmatter_list(content: str, key: str) -> list[str]:

@@ -21,4 +21,6 @@ Clients never receive direct write authority. The Core is responsible for every 
 
 For every turn, the Core rebuilds its local index. The model receives a metadata-only Vault Profile (directory distribution, frequent tags, and linked concepts), governance documents, a bounded catalog, and notes retrieved for the active discussion. It does not receive a blind full-vault dump.
 
+The Core honors `ai_sharing: local-only` at every remote-context layer. Such notes remain available to on-device indexing and review, but their metadata and content are excluded before the provider request is assembled.
+
 The JSON Lines protocol is deliberately local: it has no HTTP listener. A remote bridge must run beside the Core and should never expose the local protocol directly to the internet.

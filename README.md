@@ -77,6 +77,10 @@ Use **Review** to run a local, read-only health report. It lists Inbox candidate
 
 The core never directly writes Questions, Claims, Decisions, Experiments, or Reviews. Those remain proposals for the human to promote under the vault’s own governance.
 
+## Privacy boundary
+
+The optional frontmatter field `ai_sharing: local-only` keeps a note inside the local index and local review while excluding its path, title, tags, aliases, links, and body from every remote model context layer. Notes without the field default to `provider-allowed`. Set the field before a remote discussion: it cannot retract information sent during a previous confirmed call.
+
 ## Source handling
 
 When a user sends a public article URL, the core locally extracts readable page text and records its URL, title, author, and language as provenance. Public video URLs are limited to page metadata: it never downloads media or creates a transcript. Book discussions use only the title, author, and excerpt supplied by the user; the core does not retrieve book text. If a source cannot be inspected, the discussion continues and asks for an excerpt or transcript instead of fabricating content.
