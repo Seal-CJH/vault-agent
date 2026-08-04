@@ -13,6 +13,26 @@ class FakeProvider:
 
 
 class SessionTests(unittest.TestCase):
+    def test_records_non_sensitive_model_configuration_for_each_turn(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            index = VaultIndex(root, root / ".vault-agent.sqlite")
+            index.rebuild()
+            store = SessionStore(root / ".sessions", index)
+            session = store.create("en")
+            provider = FakeProvider()
+            provider.model = "deepseek-v4-pro"
+            provider.thinking = True
+            provider.reasoning_effort = "high"
+
+            "".join(store.turn(session.id, provider, "Audit this configuration."))
+
+            call = store.load(session.id).provider_calls[0]
+            self.assertEqual(call["model"], "deepseek-v4-pro")
+            self.assertTrue(call["thinking"])
+            self.assertEqual(call["reasoning_effort"], "high")
+            self.assertNotIn("api_key", call)
+
     def test_prepares_new_source_metadata_for_client_events(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -60,6 +80,7 @@ class SessionTests(unittest.TestCase):
             self.assertEqual([summary["id"] for summary in summaries], [second.id, first.id])
             self.assertEqual(summaries[0]["preview"], "第二个讨论")
             self.assertEqual(summaries[1]["source_language"], "en")
+            self.assertEqual(summaries[1]["last_model"], "not called")
 
     def test_attaches_inspected_source_material_to_the_vault_aware_turn(self):
         with TemporaryDirectory() as directory:

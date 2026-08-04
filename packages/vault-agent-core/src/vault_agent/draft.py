@@ -32,6 +32,7 @@ def prepare_draft(store: SessionStore, session_id: str, provider) -> Packet:
         + "\n\nSESSION:\n"
         + "\n".join(f"{m['role']}: {m['content']}" for m in session.messages)
     )
+    store.record_provider_call(session_id, provider)
     raw = provider.complete([{"role": "system", "content": instruction}, {"role": "user", "content": "Prepare the packet now."}], confirmed=True)
     raw = re.sub(r"^```(?:markdown)?\s*|\s*```$", "", raw.strip())
     try:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
@@ -17,6 +18,7 @@ class Session:
     source_language: str
     messages: list[dict[str, str]]
     sources: list[dict] = field(default_factory=list)
+    provider_calls: list[dict] = field(default_factory=list)
 
 
 class SessionStore:
@@ -44,11 +46,13 @@ class SessionStore:
         for path in self.directory.glob("*.json"):
             session = Session(**json.loads(path.read_text(encoding="utf-8")))
             first_user = next((message["content"] for message in session.messages if message["role"] == "user"), "New discussion")
+            last_call = session.provider_calls[-1] if session.provider_calls else {}
             summaries.append({
                 "id": session.id,
                 "preview": " ".join(first_user.split())[:96],
                 "source_language": session.source_language,
                 "updated_at": str(path.stat().st_mtime_ns),
+                "last_model": str(last_call.get("model", "not called")),
             })
         return sorted(summaries, key=lambda summary: int(summary["updated_at"]), reverse=True)[:limit]
 
@@ -62,6 +66,11 @@ class SessionStore:
             {key: source.get(key) for key in ("kind", "title", "provenance", "content_language")}
             for source in session.sources if source.get("provenance") not in known
         ]
+
+    def record_provider_call(self, session_id: str, provider) -> None:
+        session = self.load(session_id)
+        self._record_provider_call(session, provider)
+        self._save(session)
 
     def turn(self, session_id: str, provider, message: str):
         if not message.strip():
@@ -80,6 +89,7 @@ class SessionStore:
         )
         messages = [{"role": "system", "content": system}, *session.messages, {"role": "user", "content": message}]
         session.messages.extend([{"role": "user", "content": message}])
+        self._record_provider_call(session, provider)
         self._save(session)
         reply_parts: list[str] = []
         for delta in provider.stream(messages, confirmed=True):
@@ -87,6 +97,16 @@ class SessionStore:
             yield delta
         session.messages.append({"role": "assistant", "content": "".join(reply_parts)})
         self._save(session)
+
+    @staticmethod
+    def _record_provider_call(session: Session, provider) -> None:
+        session.provider_calls.append({
+            "at": datetime.now(timezone.utc).isoformat(),
+            "provider": getattr(provider, "provider", "deepseek"),
+            "model": getattr(provider, "model", "unknown"),
+            "thinking": bool(getattr(provider, "thinking", False)),
+            "reasoning_effort": getattr(provider, "reasoning_effort", "unknown"),
+        })
 
     def _inspect_public_sources(self, session: Session, message: str) -> str:
         contexts: list[str] = []

@@ -83,3 +83,4 @@ class DraftTests(unittest.TestCase):
             self.assertTrue(provider.confirmed)
             self.assertIn("Keep this context insight.", provider.messages[0]["content"])
             self.assertIn("https://example.test/source", provider.messages[0]["content"])
+            self.assertEqual(len(store.load(session.id).provider_calls), 1)

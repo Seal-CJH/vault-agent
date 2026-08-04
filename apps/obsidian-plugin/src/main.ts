@@ -3,7 +3,7 @@ import { ChildProcess, execFile, spawn } from "child_process";
 
 const VIEW_TYPE = "vault-agent";
 interface VaultAgentSettings { cliPath: string; }
-interface SessionSummary { id: string; preview: string; source_language: string; updated_at: string; }
+interface SessionSummary { id: string; preview: string; source_language: string; updated_at: string; last_model: string; }
 interface SessionRecord { id: string; source_language: string; messages: Array<{ role: string; content: string }>; }
 interface ReviewReport { total_notes: number; inbox_notes: string[]; claims_without_links: string[]; sources_without_links: string[]; }
 const DEFAULT_SETTINGS: VaultAgentSettings = { cliPath: "/Users/seal/Projects/Vault-Agent/scripts/vault-agent" };
@@ -67,7 +67,7 @@ class VaultAgentView extends ItemView {
       sessions.forEach(summary => {
         const item = panel.createEl("button", { cls: "vault-agent-history-item" });
         item.createDiv({ text: summary.preview || "New discussion" });
-        item.createEl("small", { text: summary.source_language });
+        item.createEl("small", { text: `${summary.source_language} · ${summary.last_model}` });
         item.onclick = () => void this.restoreSession(summary.id);
       });
     } catch (error) { panel.createDiv({ text: error instanceof Error ? error.message : String(error), cls: "vault-agent-action-error" }); }

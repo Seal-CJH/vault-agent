@@ -1,4 +1,5 @@
 import unittest
+import json
 
 from vault_agent.provider import ProviderError, DeepSeekProvider, provider_from_settings
 from vault_agent.settings import ProviderSettings
@@ -34,6 +35,21 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(provider.model, "deepseek-v4-pro")
         self.assertTrue(provider.thinking)
         self.assertEqual(provider.reasoning_effort, "high")
+
+    def test_sends_thinking_parameters_only_when_enabled(self):
+        bodies = []
+
+        def request(_, __, body):
+            bodies.append(json.loads(body))
+            return '{"choices":[{"message":{"content":"response"}}]}'
+
+        DeepSeekProvider(api_key="secret", model="deepseek-v4-pro", thinking=True, reasoning_effort="high", request=request).complete([], confirmed=True)
+        DeepSeekProvider(api_key="secret", thinking=False, request=request).complete([], confirmed=True)
+
+        self.assertEqual(bodies[0]["model"], "deepseek-v4-pro")
+        self.assertEqual(bodies[0]["thinking"], {"type": "enabled"})
+        self.assertEqual(bodies[0]["reasoning_effort"], "high")
+        self.assertNotIn("thinking", bodies[1])
 
     def test_streams_text_deltas_after_explicit_confirmation(self):
         def stream_request(*_):
