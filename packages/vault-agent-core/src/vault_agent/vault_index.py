@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections import Counter
 from pathlib import Path
 import re
 import sqlite3
@@ -71,6 +72,15 @@ class VaultIndex:
         with self._connect() as connection:
             rows = connection.execute("SELECT path, title, content, tags, aliases, links FROM documents ORDER BY path").fetchall()
         return [VaultDocument(row[0], row[1], row[2], row[3].split(), row[4].split(), row[5].split()) for row in rows]
+
+    def profile(self, limit: int = 12) -> dict[str, list[tuple[str, int]]]:
+        """Return local, metadata-only structure for vault-wide context awareness."""
+        documents = self.catalog(limit=10_000)
+        directories = Counter(document.path.split("/", 1)[0] for document in documents)
+        tags = Counter(tag for document in documents for tag in document.tags)
+        links = Counter(link for document in documents for link in document.links)
+        ranked = lambda counter: sorted(counter.items(), key=lambda item: (-item[1], item[0]))[:limit]
+        return {"directories": ranked(directories), "tags": ranked(tags), "links": ranked(links)}
 
     def governance_documents(self) -> list[VaultDocument]:
         result: list[VaultDocument] = []

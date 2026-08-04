@@ -6,7 +6,7 @@ Vault Agent is a local, approval-gated companion for the Vault Template. It sepa
 
 The Python core is the authority for vault understanding and writes. It keeps a local full-text index, a compact catalog of paths/tags/wikilinks, and local conversation/draft state outside the vault. Every remote turn receives vault governance, the compact catalog, and only the source notes retrieved for that turn.
 
-Obsidian is a client only: it starts a session, displays streamed discussion, asks the core to prepare a draft, and sends the final explicit staging confirmation. Future clients such as Feishu or OpenClaw use the same core contract; they do not gain independent file-write permission.
+Obsidian is a client only: it starts a session, displays streamed discussion, asks the core to prepare a draft, and sends the final explicit staging confirmation. Future clients such as Feishu or OpenClaw use the same core contract; they do not gain independent file-write permission. Before each discussion, the Core rebuilds a local index and supplies a metadata-only Vault Profile (directory distribution, frequent tags, and linked concepts), then governance documents and query-relevant notes.
 
 ## Local client protocol
 

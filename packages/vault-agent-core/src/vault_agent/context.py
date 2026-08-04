@@ -34,6 +34,14 @@ class ContextCompiler:
         relations = [f"{document.path} → " + ", ".join(f"[[{link}]]" for link in document.links) for document in documents if document.links]
         if relations:
             sections.append("<vault-relationships>\n" + "\n".join(relations) + "\n</vault-relationships>")
+        profile = self.index.profile()
+        profile_lines = ["documents by directory: " + ", ".join(f"{name}: {count}" for name, count in profile["directories"])]
+        if profile["tags"]:
+            profile_lines.append("frequent tags: " + ", ".join(f"{name}: {count}" for name, count in profile["tags"]))
+        if profile["links"]:
+            profile_lines.append("frequent concepts: " + ", ".join(f"[[{name}]]: {count}" for name, count in profile["links"]))
+        if profile["directories"]:
+            sections.append("<vault-profile>\n" + "\n".join(profile_lines) + "\n</vault-profile>")
         catalog_lines: list[str] = []
         used = 0
         for document in self.index.catalog():
