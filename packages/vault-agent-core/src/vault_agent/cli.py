@@ -8,6 +8,9 @@ from pathlib import Path
 from .staging import stage_packet
 from .credentials import save_key
 from .settings import ProviderSettings, load_settings, save_settings
+from .credentials import load_key
+from .provider import provider_from_settings
+from .discussion import discuss
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,6 +30,10 @@ def main(argv: list[str] | None = None) -> int:
     provider.add_argument("--model", choices=["deepseek-v4-flash", "deepseek-v4-pro"])
     provider.add_argument("--thinking", choices=["enabled", "disabled"])
     provider.add_argument("--reasoning-effort", choices=["low", "medium", "high"])
+    discussion = commands.add_parser("discuss", help="send one explicitly confirmed discussion turn to the configured provider")
+    discussion.add_argument("--message", required=True)
+    discussion.add_argument("--source-language", required=True)
+    discussion.add_argument("--confirm", action="store_true", help="explicitly authorizes this remote send")
     args = parser.parse_args(argv)
     if args.command == "stage":
         result = stage_packet(args.vault, args.packet.read_text(encoding="utf-8"), args.apply)
@@ -54,6 +61,12 @@ def main(argv: list[str] | None = None) -> int:
                 reasoning_effort=args.reasoning_effort or current.reasoning_effort,
             ))
         print(json.dumps(load_settings().__dict__, ensure_ascii=False))
+        return 0
+    if args.command == "discuss":
+        if not args.confirm:
+            parser.error("discuss requires --confirm before content is sent remotely")
+        reply = discuss(provider_from_settings(load_key("deepseek"), load_settings()), args.message, args.source_language)
+        print(json.dumps({"reply": reply}, ensure_ascii=False))
         return 0
     return 1
 

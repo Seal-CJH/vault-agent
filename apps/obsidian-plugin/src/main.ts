@@ -19,6 +19,32 @@ class VaultAgentView extends ItemView {
     } catch {
       status.setText("Local CLI is not configured. Set its path in Vault Agent settings.");
     }
+    this.contentEl.createEl("h3", { text: "Discuss a source" });
+    this.contentEl.createEl("p", { text: "Paste a link, book excerpt, note, or question. Clicking Send explicitly shares this turn with DeepSeek." });
+    const language = this.contentEl.createEl("select");
+    ["en", "zh-CN"].forEach(code => language.createEl("option", { text: code, value: code }));
+    const input = this.contentEl.createEl("textarea", { attr: { placeholder: "What did you learn, and what should be retained?" } });
+    input.rows = 7;
+    const send = this.contentEl.createEl("button", { text: "Send to DeepSeek" });
+    const conversation = this.contentEl.createDiv({ cls: "vault-agent-conversation" });
+    send.addEventListener("click", async () => {
+      const message = input.value.trim();
+      if (!message) return;
+      send.disabled = true;
+      this.append(conversation, "You", message);
+      try {
+        const reply = await this.plugin.discuss(message, language.value);
+        this.append(conversation, "Vault Agent", reply);
+        input.value = "";
+      } catch (error) {
+        this.append(conversation, "Error", error instanceof Error ? error.message : String(error));
+      } finally { send.disabled = false; }
+    });
+  }
+  append(container: HTMLElement, speaker: string, message: string) {
+    const turn = container.createDiv({ cls: "vault-agent-turn" });
+    turn.createEl("strong", { text: `${speaker}: ` });
+    turn.createEl("span", { text: message });
   }
 }
 
@@ -55,5 +81,15 @@ export default class VaultAgentPlugin extends Plugin {
       if (error) return reject(error);
       try { resolve(JSON.parse(stdout)); } catch (parseError) { reject(parseError); }
     }));
+  }
+  discuss(message: string, sourceLanguage: string): Promise<string> {
+    return new Promise((resolve, reject) => execFile(
+      this.settings.cliPath,
+      ["discuss", "--confirm", "--source-language", sourceLanguage, "--message", message],
+      (error, stdout, stderr) => {
+        if (error) return reject(new Error(stderr || error.message));
+        try { resolve(JSON.parse(stdout).reply); } catch (parseError) { reject(parseError); }
+      }
+    ));
   }
 }
