@@ -8,6 +8,16 @@ The Python core is the authority for vault understanding and writes. It keeps a 
 
 Obsidian is a client only: it starts a session, displays streamed discussion, asks the core to prepare a draft, and sends the final explicit staging confirmation. Future clients such as Feishu or OpenClaw use the same core contract; they do not gain independent file-write permission.
 
+## Local client protocol
+
+`vault-agent rpc` is a newline-delimited JSON protocol over stdin/stdout, not a network server. Every request carries an `id`, `method`, and `params`; every response event repeats that id. The Obsidian plugin uses this protocol for settings, sessions, drafts, staging, history, and Review.
+
+```json
+{"id":"example-1","method":"session.start","params":{"vault":"/path/to/vault","source_language":"en"}}
+```
+
+Read-only methods include `provider.show`, `source.inspect`, `review.run`, `session.list`, and `session.show`. `session.turn` and `session.draft` require `confirm_remote: true`; `session.stage` requires `apply: true`. The protocol is intended for a local child process, so future Feishu/OpenClaw bridges must run beside the Core rather than exposing it as a public port.
+
 ## Repository layout
 
 - `packages/vault-agent-core`: Python policy core and CLI.

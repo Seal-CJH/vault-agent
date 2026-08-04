@@ -6,6 +6,7 @@ import getpass
 import json
 import hashlib
 from pathlib import Path
+import sys
 
 from .staging import stage_packet
 from .credentials import save_key
@@ -18,6 +19,7 @@ from .vault_index import VaultIndex
 from .draft import prepare_draft
 from .sources import inspect_source
 from .review import review_vault
+from .rpc import run_jsonl
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -52,6 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     source.add_argument("--source-language")
     review = commands.add_parser("review", help="run a read-only vault health review")
     review.add_argument("--vault", required=True, type=Path)
+    commands.add_parser("rpc", help="serve local newline-delimited JSON requests on stdin/stdout")
     session = commands.add_parser("session", help="manage local vault-aware discussion sessions")
     session.add_argument("action", choices=["start", "turn", "draft", "stage", "list", "show"])
     session.add_argument("--vault", required=True, type=Path)
@@ -62,6 +65,9 @@ def main(argv: list[str] | None = None) -> int:
     session.add_argument("--apply", action="store_true")
     session.add_argument("--limit", type=int, default=30)
     args = parser.parse_args(argv)
+    if args.command == "rpc":
+        run_jsonl(sys.stdin, sys.stdout)
+        return 0
     if args.command == "stage":
         result = stage_packet(args.vault, args.packet.read_text(encoding="utf-8"), args.apply)
         status = "staged" if result.written else "preview"

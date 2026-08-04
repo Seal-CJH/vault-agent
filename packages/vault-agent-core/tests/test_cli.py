@@ -9,6 +9,12 @@ from test_staging import PACKET
 
 
 class CliTests(unittest.TestCase):
+    def test_starts_jsonl_rpc_transport(self):
+        with patch("vault_agent.cli.run_jsonl") as run:
+            self.assertEqual(main(["rpc"]), 0)
+
+        run.assert_called_once()
+
     def test_emits_source_inspected_events_before_streaming_turn_text(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
