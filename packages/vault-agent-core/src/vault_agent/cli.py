@@ -157,6 +157,8 @@ def main(argv: list[str] | None = None) -> int:
         if not args.session_id or not args.message or not args.confirm:
             parser.error("session turn requires --session-id, --message, and --confirm")
         agent = provider_from_settings(load_key("deepseek"), load_settings())
+        for source in store.prepare_sources(args.session_id, args.message):
+            print(json.dumps({"type": "source_inspected", "source": source}, ensure_ascii=False), flush=True)
         print(json.dumps({"type": "started", "session_id": args.session_id}), flush=True)
         for delta in store.turn(args.session_id, agent, args.message):
             print(json.dumps({"type": "text_delta", "delta": delta}, ensure_ascii=False), flush=True)

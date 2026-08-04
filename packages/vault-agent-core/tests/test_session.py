@@ -13,6 +13,35 @@ class FakeProvider:
 
 
 class SessionTests(unittest.TestCase):
+    def test_prepares_new_source_metadata_for_client_events(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            index = VaultIndex(root, root / ".vault-agent.sqlite")
+            index.rebuild()
+            material = SourceMaterial("article", "Visible title", "Author", "https://example.test/a", "en", "Body")
+            store = SessionStore(root / ".sessions", index, source_inspector=lambda **_: material)
+            session = store.create("en")
+
+            sources = store.prepare_sources(session.id, "Read https://example.test/a")
+
+            self.assertEqual(sources, [{"kind": "article", "title": "Visible title", "provenance": "https://example.test/a", "content_language": "en"}])
+
+    def test_keeps_previously_inspected_source_material_available_in_later_turns(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            index = VaultIndex(root, root / ".vault-agent.sqlite")
+            index.rebuild()
+            material = SourceMaterial("article", "Source title", "Author", "https://example.test/a", "en", "Persistent source body.")
+            store = SessionStore(root / ".sessions", index, source_inspector=lambda **_: material)
+            session = store.create("en")
+            first = FakeProvider()
+            second = FakeProvider()
+
+            "".join(store.turn(session.id, first, "Read https://example.test/a"))
+            "".join(store.turn(session.id, second, "How does this connect?"))
+
+            self.assertIn("Persistent source body.", second.messages[0]["content"])
+
     def test_lists_local_sessions_newest_first_without_reading_the_vault(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

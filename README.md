@@ -67,4 +67,6 @@ The core never directly writes Questions, Claims, Decisions, Experiments, or Rev
 
 When a user sends a public article URL, the core locally extracts readable page text and records its URL, title, author, and language as provenance. Public video URLs are limited to page metadata: it never downloads media or creates a transcript. Book discussions use only the title, author, and excerpt supplied by the user; the core does not retrieve book text. If a source cannot be inspected, the discussion continues and asks for an excerpt or transcript instead of fabricating content.
 
+Clients receive a `source_inspected` event before the model stream, so they can show what was parsed and which source language was detected. Previously parsed source material remains available across later turns in the same local session.
+
 Source fetching accepts only public HTTP(S) URLs. The Core rejects local/private addresses and credential-bearing URLs, revalidates redirects, and limits a fetched page to 2 MB.

@@ -9,6 +9,24 @@ from test_staging import PACKET
 
 
 class CliTests(unittest.TestCase):
+    def test_emits_source_inspected_events_before_streaming_turn_text(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            vault = root / "vault"
+            vault.mkdir()
+            fingerprint = hashlib.sha256(str(vault.resolve()).encode("utf-8")).hexdigest()[:16]
+            state = root / "Library" / "Application Support" / "Vault Agent" / "vaults" / fingerprint / "sessions"
+            state.mkdir(parents=True)
+            (state / "session.json").write_text('{"id":"session","source_language":"en","messages":[]}', encoding="utf-8")
+            from io import StringIO
+            from contextlib import redirect_stdout
+            output = StringIO()
+
+            with patch("vault_agent.cli.Path.home", return_value=root), patch("vault_agent.cli.load_key", return_value="key"), patch("vault_agent.cli.load_settings"), patch("vault_agent.cli.provider_from_settings"), patch("vault_agent.cli.SessionStore.prepare_sources", return_value=[{"kind": "article", "title": "Parsed", "provenance": "https://example.test/a", "content_language": "en"}]), patch("vault_agent.cli.SessionStore.turn", return_value=iter(["reply"])), redirect_stdout(output):
+                self.assertEqual(main(["session", "turn", "--vault", str(vault), "--session-id", "session", "--message", "https://example.test/a", "--confirm"]), 0)
+
+            self.assertLess(output.getvalue().index('"source_inspected"'), output.getvalue().index('"text_delta"'))
+
     def test_emits_a_read_only_vault_review(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

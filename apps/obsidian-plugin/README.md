@@ -22,3 +22,5 @@ Use **History** to reopen a local session. Conversation state is stored by the C
 Use **Review** for a local-only summary of Inbox candidates and Claims or Sources missing wikilinks. It does not call a model or change any note.
 
 The displayed model badge comes from `vault-agent provider show`; model keys and provider settings stay outside the plugin and outside the vault.
+
+For public links, the pane first shows a local **Source parsed** status (title, kind, and detected language), then begins the model stream.
