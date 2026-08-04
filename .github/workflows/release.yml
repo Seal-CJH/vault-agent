@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build Core distributions
+        run: |
+          python -m pip install --upgrade build
+          python -m build packages/vault-agent-core --outdir release/core
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/obsidian-plugin/pnpm-lock.yaml
+      - name: Build Obsidian plugin archive
+        run: |
+          pnpm --dir apps/obsidian-plugin install --frozen-lockfile
+          pnpm --dir apps/obsidian-plugin build
+          mkdir -p release/vault-agent
+          cp apps/obsidian-plugin/main.js apps/obsidian-plugin/manifest.json apps/obsidian-plugin/styles.css release/vault-agent/
+          cd release && zip -r vault-agent-obsidian-plugin.zip vault-agent
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release/core/*
+            release/vault-agent-obsidian-plugin.zip

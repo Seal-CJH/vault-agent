@@ -24,6 +24,10 @@ Read-only methods include `provider.show`, `source.inspect`, `review.run`, `sess
 - `apps/obsidian-plugin`: desktop-only Obsidian interaction layer.
 - `fixtures`: sanitized test materials only.
 
+## Releases
+
+Tagged releases produce a Python Core distribution and an Obsidian plugin zip. See [releasing](docs/releasing.md) for the version and release process. Local debug installation remains documented in [the plugin README](apps/obsidian-plugin/README.md).
+
 ## Safe first command
 
 ```bash
