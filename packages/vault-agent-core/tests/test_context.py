@@ -7,6 +7,23 @@ from vault_agent.vault_index import VaultIndex
 
 
 class ContextCompilerTests(unittest.TestCase):
+    def test_includes_a_compact_catalog_of_other_vault_notes(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "03_Wiki").mkdir(parents=True)
+            (root / "03_Wiki" / "decision.md").write_text(
+                "---\ntags:\n  - domain/ai\n---\n# Model choice\n\nLinks to [[LLM]].", encoding="utf-8"
+            )
+            (root / "03_Wiki" / "unrelated.md").write_text("# Reading list\n\nLater material.", encoding="utf-8")
+            index = VaultIndex(root, root / ".vault-agent.sqlite")
+            index.rebuild()
+
+            bundle = ContextCompiler(index).compile("model")
+
+            self.assertIn("<vault-catalog>", bundle.prompt)
+            self.assertIn("03_Wiki/unrelated.md | Reading list", bundle.prompt)
+            self.assertIn("tags: domain/ai", bundle.prompt)
+
     def test_includes_governance_and_related_vault_documents(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

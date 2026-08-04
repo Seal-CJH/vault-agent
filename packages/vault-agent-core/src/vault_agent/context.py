@@ -14,9 +14,10 @@ class ContextBundle:
 class ContextCompiler:
     """Compiles an auditable, bounded model context from the local vault index."""
 
-    def __init__(self, index: VaultIndex, max_document_chars: int = 6000):
+    def __init__(self, index: VaultIndex, max_document_chars: int = 6000, max_catalog_chars: int = 12000):
         self.index = index
         self.max_document_chars = max_document_chars
+        self.max_catalog_chars = max_catalog_chars
 
     def compile(self, query: str) -> ContextBundle:
         governance = self.index.governance_documents()
@@ -33,4 +34,19 @@ class ContextCompiler:
         relations = [f"{document.path} → " + ", ".join(f"[[{link}]]" for link in document.links) for document in documents if document.links]
         if relations:
             sections.append("<vault-relationships>\n" + "\n".join(relations) + "\n</vault-relationships>")
+        catalog_lines: list[str] = []
+        used = 0
+        for document in self.index.catalog():
+            metadata = []
+            if document.tags:
+                metadata.append("tags: " + ", ".join(document.tags))
+            if document.links:
+                metadata.append("links: " + ", ".join(f"[[{link}]]" for link in document.links))
+            line = f"{document.path} | {document.title}" + (" | " + "; ".join(metadata) if metadata else "")
+            if used + len(line) + 1 > self.max_catalog_chars:
+                break
+            catalog_lines.append(line)
+            used += len(line) + 1
+        if catalog_lines:
+            sections.append("<vault-catalog>\n" + "\n".join(catalog_lines) + "\n</vault-catalog>")
         return ContextBundle(paths=[document.path for document in documents], prompt="\n\n".join(sections))
