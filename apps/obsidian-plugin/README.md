@@ -19,4 +19,6 @@ Use the pane as a client of the local core:
 
 Use **History** to reopen a local session. Conversation state is stored by the Core outside the vault, and restoring a session does not make a model call.
 
+Use **Review** for a local-only summary of Inbox candidates and Claims or Sources missing wikilinks. It does not call a model or change any note.
+
 The displayed model badge comes from `vault-agent provider show`; model keys and provider settings stay outside the plugin and outside the vault.

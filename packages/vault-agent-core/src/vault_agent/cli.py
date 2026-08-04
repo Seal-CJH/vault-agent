@@ -17,6 +17,7 @@ from .session import SessionStore
 from .vault_index import VaultIndex
 from .draft import prepare_draft
 from .sources import inspect_source
+from .review import review_vault
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -49,6 +50,8 @@ def main(argv: list[str] | None = None) -> int:
     source.add_argument("--author")
     source.add_argument("--excerpt")
     source.add_argument("--source-language")
+    review = commands.add_parser("review", help="run a read-only vault health review")
+    review.add_argument("--vault", required=True, type=Path)
     session = commands.add_parser("session", help="manage local vault-aware discussion sessions")
     session.add_argument("action", choices=["start", "turn", "draft", "stage", "list", "show"])
     session.add_argument("--vault", required=True, type=Path)
@@ -106,6 +109,15 @@ def main(argv: list[str] | None = None) -> int:
             excerpt=args.excerpt, content_language=args.source_language,
         )
         print(json.dumps(asdict(material), ensure_ascii=False))
+        return 0
+    if args.command == "review":
+        if not args.vault.is_dir():
+            parser.error("--vault must be an existing vault directory")
+        fingerprint = hashlib.sha256(str(args.vault.resolve()).encode("utf-8")).hexdigest()[:16]
+        state = Path.home() / "Library" / "Application Support" / "Vault Agent" / "vaults" / fingerprint
+        index = VaultIndex(args.vault, state / "index.sqlite")
+        index.rebuild()
+        print(json.dumps(review_vault(index).to_dict(), ensure_ascii=False))
         return 0
     if args.command == "session":
         if not args.vault.is_dir():

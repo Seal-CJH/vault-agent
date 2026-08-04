@@ -5,6 +5,7 @@ const VIEW_TYPE = "vault-agent";
 interface VaultAgentSettings { cliPath: string; }
 interface SessionSummary { id: string; preview: string; source_language: string; updated_at: string; }
 interface SessionRecord { id: string; source_language: string; messages: Array<{ role: string; content: string }>; }
+interface ReviewReport { total_notes: number; inbox_notes: string[]; claims_without_links: string[]; sources_without_links: string[]; }
 const DEFAULT_SETTINGS: VaultAgentSettings = { cliPath: "/Users/seal/Projects/Vault-Agent/scripts/vault-agent" };
 
 class VaultAgentView extends ItemView {
@@ -22,6 +23,8 @@ class VaultAgentView extends ItemView {
     this.contentEl.empty(); this.contentEl.addClass("vault-agent-shell");
     const header = this.contentEl.createDiv({ cls: "vault-agent-header" });
     header.createEl("strong", { text: "Vault Agent" });
+    const review = header.createEl("button", { text: "Review", cls: "vault-agent-quiet" });
+    review.onclick = () => void this.showReview();
     const history = header.createEl("button", { text: "History", cls: "vault-agent-quiet" });
     history.onclick = () => void this.showHistory();
     const reset = header.createEl("button", { text: "＋ New", cls: "vault-agent-quiet" });
@@ -68,6 +71,18 @@ class VaultAgentView extends ItemView {
         item.onclick = () => void this.restoreSession(summary.id);
       });
     } catch (error) { panel.createDiv({ text: error instanceof Error ? error.message : String(error), cls: "vault-agent-action-error" }); }
+  }
+  private async showReview() {
+    const body = this.append("agent", "Running local vault review…");
+    try {
+      const report = await this.plugin.reviewVault(this.vaultPath());
+      body.dataset.markdown = this.reviewMarkdown(report);
+      await this.renderMarkdown(body);
+    } catch (error) { body.dataset.markdown = ""; body.setText(error instanceof Error ? error.message : String(error)); }
+  }
+  private reviewMarkdown(report: ReviewReport): string {
+    const list = (items: string[]) => items.length ? items.map(item => `- \`${item}\``).join("\n") : "- None";
+    return `## Local Vault Review\n\n- Notes indexed: ${report.total_notes}\n\n### Inbox candidates\n${list(report.inbox_notes)}\n\n### Claims without wikilinks\n${list(report.claims_without_links)}\n\n### Sources without wikilinks\n${list(report.sources_without_links)}\n\n_This report is local and read-only; it does not call a model or edit the vault._`;
   }
   private async restoreSession(sessionId: string) {
     const session = await this.plugin.showSession(this.vaultPath(), sessionId);
@@ -116,5 +131,6 @@ export default class VaultAgentPlugin extends Plugin {
   stageDraft(vault: string, sessionId: string): Promise<{ path: string }> { return this.sessionCommand(["session", "stage", "--vault", vault, "--session-id", sessionId, "--apply"]); }
   async listSessions(vault: string): Promise<SessionSummary[]> { return (await this.sessionCommand<{ sessions: SessionSummary[] }>(["session", "list", "--vault", vault])).sessions; }
   showSession(vault: string, sessionId: string): Promise<SessionRecord> { return this.sessionCommand(["session", "show", "--vault", vault, "--session-id", sessionId]); }
+  reviewVault(vault: string): Promise<ReviewReport> { return this.sessionCommand(["review", "--vault", vault]); }
   private sessionCommand<T>(args: string[]): Promise<T> { return new Promise((resolve, reject) => execFile(this.settings.cliPath, args, (error, stdout, stderr) => { if (error) return reject(new Error(stderr || error.message)); try { resolve(JSON.parse(stdout)); } catch (e) { reject(e); } })); }
 }

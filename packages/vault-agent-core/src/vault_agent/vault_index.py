@@ -66,6 +66,12 @@ class VaultIndex:
             ).fetchall()
         return [VaultDocument(row[0], row[1], "", row[3].split(), row[4].split(), row[5].split()) for row in rows]
 
+    def all_documents(self) -> list[VaultDocument]:
+        """Return locally indexed documents for deterministic, read-only audits."""
+        with self._connect() as connection:
+            rows = connection.execute("SELECT path, title, content, tags, aliases, links FROM documents ORDER BY path").fetchall()
+        return [VaultDocument(row[0], row[1], row[2], row[3].split(), row[4].split(), row[5].split()) for row in rows]
+
     def governance_documents(self) -> list[VaultDocument]:
         result: list[VaultDocument] = []
         for relative in GOVERNANCE_PATHS:

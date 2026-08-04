@@ -59,6 +59,8 @@ Settings are stored separately from the API key at `~/Library/Application Suppor
 
 The plugin’s **History** action asks the Core for local session metadata and restores a selected session without a remote request. Conversation state remains outside the vault; only explicitly confirmed staging creates a vault note.
 
+Use **Review** to run a local, read-only health report. It lists Inbox candidates plus Claims and Sources without wikilinks, while excluding templates. This is the Core capability that future scheduled or remote notification clients will call; it does not contact a model or edit the vault.
+
 The core never directly writes Questions, Claims, Decisions, Experiments, or Reviews. Those remain proposals for the human to promote under the vault’s own governance.
 
 ## Source handling
