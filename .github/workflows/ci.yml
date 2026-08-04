@@ -27,13 +27,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: apps/obsidian-plugin/pnpm-lock.yaml
-      - name: Enable package manager
-        run: corepack enable
       - name: Install plugin dependencies
         run: pnpm --dir apps/obsidian-plugin install --frozen-lockfile
       - name: Build and type-check plugin
