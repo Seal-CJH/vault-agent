@@ -5,3 +5,5 @@ __pycache__/
 node_modules/
 dist/
 main.js
+data.json
+*.egg-info/

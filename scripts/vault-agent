@@ -1,0 +1,6 @@
+#!/bin/sh
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+CORE_SRC="$SCRIPT_DIR/../packages/vault-agent-core/src"
+export PYTHONPATH="$CORE_SRC${PYTHONPATH:+:$PYTHONPATH}"
+exec /usr/bin/python3 -m vault_agent.cli "$@"
