@@ -38,6 +38,16 @@ class SessionStore:
         path = self.directory / f"{session_id}.json"
         return Session(**json.loads(path.read_text(encoding="utf-8")))
 
+    def delete(self, session_id: str) -> None:
+        """Delete only this session's local state and draft, never a vault file."""
+        session_path = self.directory / f"{session_id}.json"
+        if not session_path.exists():
+            raise ValueError("session does not exist")
+        session_path.unlink()
+        draft_path = self.directory.parent / "drafts" / f"{session_id}.md"
+        if draft_path.exists():
+            draft_path.unlink()
+
     def list(self, limit: int = 30) -> list[dict[str, str]]:
         """Return local session metadata for clients; message bodies stay in `load`."""
         if not self.directory.exists():

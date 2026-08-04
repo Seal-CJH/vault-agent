@@ -85,10 +85,20 @@ class VaultAgentView extends ItemView {
       const sessions = await this.plugin.listSessions(this.vaultPath());
       if (!sessions.length) { panel.createDiv({ text: "No local sessions yet.", cls: "vault-agent-empty" }); return; }
       sessions.forEach(summary => {
-        const item = panel.createEl("button", { cls: "vault-agent-history-item" });
-        item.createDiv({ text: summary.preview || "New discussion" });
-        item.createEl("small", { text: `${summary.source_language} · ${summary.last_model}` });
-        item.onclick = () => void this.restoreSession(summary.id);
+        const item = panel.createDiv({ cls: "vault-agent-history-item" });
+        const open = item.createEl("button", { cls: "vault-agent-history-open" });
+        open.createDiv({ text: summary.preview || "New discussion" });
+        open.createEl("small", { text: `${summary.source_language} · ${summary.last_model}` });
+        open.onclick = () => void this.restoreSession(summary.id);
+        const remove = item.createEl("button", { text: "Delete", cls: "vault-agent-copy" });
+        remove.onclick = async () => {
+          if (!window.confirm("Delete this local session and its local draft? Vault notes will not be changed.")) return;
+          try {
+            await this.plugin.deleteSession(this.vaultPath(), summary.id);
+            if (this.sessionId === summary.id) { this.sessionId = null; this.thread.empty(); }
+            await this.showHistory();
+          } catch (error) { panel.createDiv({ text: error instanceof Error ? error.message : String(error), cls: "vault-agent-action-error" }); }
+        };
       });
     } catch (error) { panel.createDiv({ text: error instanceof Error ? error.message : String(error), cls: "vault-agent-action-error" }); }
   }
@@ -181,6 +191,7 @@ export default class VaultAgentPlugin extends Plugin {
   stageDraft(vault: string, sessionId: string): Promise<{ path: string }> { return this.rpcCall("session.stage", { vault, session_id: sessionId, apply: true }); }
   async listSessions(vault: string): Promise<SessionSummary[]> { return (await this.rpcCall<{ sessions: SessionSummary[] }>("session.list", { vault })).sessions; }
   showSession(vault: string, sessionId: string): Promise<SessionRecord> { return this.rpcCall("session.show", { vault, session_id: sessionId }); }
+  deleteSession(vault: string, sessionId: string): Promise<{ deleted: boolean }> { return this.rpcCall("session.delete", { vault, session_id: sessionId, apply: true }); }
   reviewVault(vault: string): Promise<ReviewReport> { return this.rpcCall("review.run", { vault }); }
   private rpcCall<T>(method: string, params: Record<string, unknown>): Promise<T> { return new Promise((resolve, reject) => { const child = spawn(this.settings.cliPath, ["rpc"]); let stdout = ""; let stderr = ""; child.stdout?.on("data", chunk => { stdout += chunk.toString(); }); child.stderr?.on("data", chunk => { stderr += chunk.toString(); }); child.on("error", reject); child.on("close", () => { try { const events = stdout.split("\n").filter(Boolean).map(line => JSON.parse(line)); const error = events.find(event => event.type === "error"); if (error) return reject(new Error(error.message)); const completed = events.find(event => event.type === "completed"); if (!completed) return reject(new Error(stderr || "Core returned no completed event.")); resolve(completed.result as T); } catch (error) { reject(error); } }); child.stdin?.end(JSON.stringify({ id: `obsidian-${Date.now()}`, method, params }) + "\n"); }); }
 }

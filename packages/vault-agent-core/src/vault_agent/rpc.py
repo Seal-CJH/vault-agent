@@ -53,6 +53,12 @@ def handle_request(request: dict) -> Iterable[dict]:
     if method == "session.show":
         yield _completed(request_id, asdict(store.load(session_id)))
         return
+    if method == "session.delete":
+        if params.get("apply") is not True:
+            raise ValueError("session.delete requires apply: true")
+        store.delete(session_id)
+        yield _completed(request_id, {"deleted": True})
+        return
     if method == "session.attach_source":
         source = store.attach_source(
             session_id,

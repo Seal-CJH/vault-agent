@@ -19,6 +19,7 @@ Use the pane as a client of the local core:
 4. Review it and choose **Confirm stage to Inbox** to let the core write the note. Nothing is written before this confirmation.
 
 Use **History** to reopen a local session. Conversation state is stored by the Core outside the vault, and restoring a session does not make a model call.
+Use **Delete** beside a session only when you want to remove its local history and local draft. The pane asks for confirmation; it never deletes or edits a Vault note.
 Each history item also displays the model last used by that session; the local audit records model, thinking state, reasoning effort, and timestamp but never an API key.
 
 Use **Review** for a local-only summary of Inbox candidates and Claims or Sources missing wikilinks. It does not call a model or change any note.

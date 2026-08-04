@@ -106,6 +106,24 @@ class SessionTests(unittest.TestCase):
             self.assertEqual(summaries[1]["source_language"], "en")
             self.assertEqual(summaries[1]["last_model"], "not called")
 
+    def test_deletes_only_the_local_session_state(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "01_Inbox").mkdir()
+            note = root / "01_Inbox" / "kept.md"
+            note.write_text("# Kept", encoding="utf-8")
+            index = VaultIndex(root, root / ".vault-agent.sqlite")
+            index.rebuild()
+            store = SessionStore(root / ".state" / "sessions", index)
+            session = store.create("en")
+            store.save_draft(session.id, "# Local draft")
+
+            store.delete(session.id)
+
+            self.assertFalse((root / ".state" / "sessions" / f"{session.id}.json").exists())
+            self.assertFalse((root / ".state" / "drafts" / f"{session.id}.md").exists())
+            self.assertEqual(note.read_text(encoding="utf-8"), "# Kept")
+
     def test_attaches_inspected_source_material_to_the_vault_aware_turn(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
