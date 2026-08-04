@@ -17,4 +17,6 @@ Use the pane as a client of the local core:
 2. Choose **Prepare ingest draft** to ask the core for a validated Packet preview.
 3. Review it and choose **Confirm stage to Inbox** to let the core write the note. Nothing is written before this confirmation.
 
+Use **History** to reopen a local session. Conversation state is stored by the Core outside the vault, and restoring a session does not make a model call.
+
 The displayed model badge comes from `vault-agent provider show`; model keys and provider settings stay outside the plugin and outside the vault.

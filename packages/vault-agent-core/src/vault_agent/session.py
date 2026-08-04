@@ -36,6 +36,22 @@ class SessionStore:
         path = self.directory / f"{session_id}.json"
         return Session(**json.loads(path.read_text(encoding="utf-8")))
 
+    def list(self, limit: int = 30) -> list[dict[str, str]]:
+        """Return local session metadata for clients; message bodies stay in `load`."""
+        if not self.directory.exists():
+            return []
+        summaries: list[dict[str, str]] = []
+        for path in self.directory.glob("*.json"):
+            session = Session(**json.loads(path.read_text(encoding="utf-8")))
+            first_user = next((message["content"] for message in session.messages if message["role"] == "user"), "New discussion")
+            summaries.append({
+                "id": session.id,
+                "preview": " ".join(first_user.split())[:96],
+                "source_language": session.source_language,
+                "updated_at": str(path.stat().st_mtime_ns),
+            })
+        return sorted(summaries, key=lambda summary: int(summary["updated_at"]), reverse=True)[:limit]
+
     def turn(self, session_id: str, provider, message: str):
         if not message.strip():
             raise ValueError("message cannot be empty")

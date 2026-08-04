@@ -57,6 +57,8 @@ Settings are stored separately from the API key at `~/Library/Application Suppor
 3. Click **Prepare ingest draft** when the discussion is ready. This makes a separate, explicit model call that returns a validated Packet preview.
 4. Review the complete preview, then click **Confirm stage to Inbox**. Only this action writes a Markdown note, and it is restricted to `01_Inbox/conversations/`.
 
+The plugin’s **History** action asks the Core for local session metadata and restores a selected session without a remote request. Conversation state remains outside the vault; only explicitly confirmed staging creates a vault note.
+
 The core never directly writes Questions, Claims, Decisions, Experiments, or Reviews. Those remain proposals for the human to promote under the vault’s own governance.
 
 ## Source handling

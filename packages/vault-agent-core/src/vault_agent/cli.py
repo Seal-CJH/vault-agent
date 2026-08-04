@@ -50,13 +50,14 @@ def main(argv: list[str] | None = None) -> int:
     source.add_argument("--excerpt")
     source.add_argument("--source-language")
     session = commands.add_parser("session", help="manage local vault-aware discussion sessions")
-    session.add_argument("action", choices=["start", "turn", "draft", "stage"])
+    session.add_argument("action", choices=["start", "turn", "draft", "stage", "list", "show"])
     session.add_argument("--vault", required=True, type=Path)
     session.add_argument("--source-language", choices=["zh-CN", "en"])
     session.add_argument("--session-id")
     session.add_argument("--message")
     session.add_argument("--confirm", action="store_true")
     session.add_argument("--apply", action="store_true")
+    session.add_argument("--limit", type=int, default=30)
     args = parser.parse_args(argv)
     if args.command == "stage":
         result = stage_packet(args.vault, args.packet.read_text(encoding="utf-8"), args.apply)
@@ -114,6 +115,14 @@ def main(argv: list[str] | None = None) -> int:
         index = VaultIndex(args.vault, state / "index.sqlite")
         index.rebuild()
         store = SessionStore(state / "sessions", index)
+        if args.action == "list":
+            print(json.dumps({"sessions": store.list(args.limit)}, ensure_ascii=False))
+            return 0
+        if args.action == "show":
+            if not args.session_id:
+                parser.error("session show requires --session-id")
+            print(json.dumps(asdict(store.load(args.session_id)), ensure_ascii=False))
+            return 0
         if args.action == "start":
             if not args.source_language:
                 parser.error("session start requires --source-language")

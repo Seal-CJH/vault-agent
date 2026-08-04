@@ -1,12 +1,35 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
+import hashlib
 
 from vault_agent.cli import main
 from test_staging import PACKET
 
 
 class CliTests(unittest.TestCase):
+    def test_lists_and_loads_sessions_for_a_vault(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            vault = root / "vault"
+            vault.mkdir()
+            fingerprint = hashlib.sha256(str(vault.resolve()).encode("utf-8")).hexdigest()[:16]
+            state = root / "Library" / "Application Support" / "Vault Agent" / "vaults" / fingerprint / "sessions"
+            state.mkdir(parents=True)
+            session_id = "local-session"
+            (state / f"{session_id}.json").write_text('{"id":"local-session","source_language":"en","messages":[{"role":"user","content":"Resume this"}]}', encoding="utf-8")
+            from io import StringIO
+            from contextlib import redirect_stdout
+            output = StringIO()
+
+            with patch("vault_agent.cli.Path.home", return_value=root), redirect_stdout(output):
+                self.assertEqual(main(["session", "list", "--vault", str(vault)]), 0)
+                self.assertEqual(main(["session", "show", "--vault", str(vault), "--session-id", session_id]), 0)
+
+            self.assertIn('"preview": "Resume this"', output.getvalue())
+            self.assertIn('"id": "local-session"', output.getvalue())
+
     def test_inspects_a_book_without_provider_or_vault_write(self):
         from io import StringIO
         from contextlib import redirect_stdout

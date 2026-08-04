@@ -3,6 +3,8 @@ import { ChildProcess, execFile, spawn } from "child_process";
 
 const VIEW_TYPE = "vault-agent";
 interface VaultAgentSettings { cliPath: string; }
+interface SessionSummary { id: string; preview: string; source_language: string; updated_at: string; }
+interface SessionRecord { id: string; source_language: string; messages: Array<{ role: string; content: string }>; }
 const DEFAULT_SETTINGS: VaultAgentSettings = { cliPath: "/Users/seal/Projects/Vault-Agent/scripts/vault-agent" };
 
 class VaultAgentView extends ItemView {
@@ -11,6 +13,7 @@ class VaultAgentView extends ItemView {
   private sendButton!: HTMLButtonElement;
   private thread!: HTMLElement;
   private modelChip!: HTMLElement;
+  private language!: HTMLSelectElement;
   private sessionId: string | null = null;
   constructor(leaf: WorkspaceLeaf, private plugin: VaultAgentPlugin) { super(leaf); }
   getViewType() { return VIEW_TYPE; }
@@ -19,6 +22,8 @@ class VaultAgentView extends ItemView {
     this.contentEl.empty(); this.contentEl.addClass("vault-agent-shell");
     const header = this.contentEl.createDiv({ cls: "vault-agent-header" });
     header.createEl("strong", { text: "Vault Agent" });
+    const history = header.createEl("button", { text: "History", cls: "vault-agent-quiet" });
+    history.onclick = () => void this.showHistory();
     const reset = header.createEl("button", { text: "＋ New", cls: "vault-agent-quiet" });
     reset.onclick = () => { this.thread.empty(); this.sessionId = null; this.composer.value = ""; this.composer.focus(); };
     this.thread = this.contentEl.createDiv({ cls: "vault-agent-thread" });
@@ -27,10 +32,10 @@ class VaultAgentView extends ItemView {
     this.composer = composer.createEl("textarea", { attr: { placeholder: "Discuss this source…" } }); this.composer.rows = 3;
     this.composer.addEventListener("keydown", event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void this.send(); } });
     const bar = composer.createDiv({ cls: "vault-agent-composer-bar" });
-    const language = bar.createEl("select"); ["zh-CN", "en"].forEach(value => language.createEl("option", { value, text: value }));
+    this.language = bar.createEl("select"); ["zh-CN", "en"].forEach(value => this.language.createEl("option", { value, text: value }));
     this.modelChip = bar.createSpan({ cls: "vault-agent-model-chip", text: "Checking model…" });
     this.sendButton = bar.createEl("button", { text: "↑ Send", cls: "mod-cta vault-agent-send" });
-    this.sendButton.onclick = () => this.process ? this.stop() : void this.send(language.value);
+    this.sendButton.onclick = () => this.process ? this.stop() : void this.send(this.language.value);
     await this.refreshModel();
   }
   async refreshModel() { try { const c = await this.plugin.providerConfig(); this.modelChip.setText(`DeepSeek · ${c.model.replace("deepseek-", "")} · Thinking ${c.thinking ? "on" : "off"}`); } catch { this.modelChip.setText("CLI unavailable — check settings"); } }
@@ -49,6 +54,30 @@ class VaultAgentView extends ItemView {
     this.process.on("error", error => { body.setText(`CLI could not start: ${error.message}. Check Vault Agent settings.`); });
   }
   private stop() { this.process?.kill("SIGTERM"); this.process = null; this.sendButton.setText("↑ Send"); this.sendButton.removeClass("mod-warning"); }
+  private async showHistory() {
+    this.thread.empty();
+    const panel = this.thread.createDiv({ cls: "vault-agent-history" });
+    panel.createEl("div", { text: "Local sessions", cls: "vault-agent-history-title" });
+    try {
+      const sessions = await this.plugin.listSessions(this.vaultPath());
+      if (!sessions.length) { panel.createDiv({ text: "No local sessions yet.", cls: "vault-agent-empty" }); return; }
+      sessions.forEach(summary => {
+        const item = panel.createEl("button", { cls: "vault-agent-history-item" });
+        item.createDiv({ text: summary.preview || "New discussion" });
+        item.createEl("small", { text: summary.source_language });
+        item.onclick = () => void this.restoreSession(summary.id);
+      });
+    } catch (error) { panel.createDiv({ text: error instanceof Error ? error.message : String(error), cls: "vault-agent-action-error" }); }
+  }
+  private async restoreSession(sessionId: string) {
+    const session = await this.plugin.showSession(this.vaultPath(), sessionId);
+    this.sessionId = session.id; this.language.value = session.source_language; this.thread.empty();
+    for (const message of session.messages) {
+      const body = this.append(message.role === "user" ? "user" : "agent", message.content);
+      if (message.role !== "user") await this.renderMarkdown(body);
+    }
+    this.composer.focus();
+  }
   private addDraftAction() {
     if (!this.sessionId) return;
     const actions = this.thread.createDiv({ cls: "vault-agent-actions" });
@@ -85,5 +114,7 @@ export default class VaultAgentPlugin extends Plugin {
   startSession(vault: string, sourceLanguage: string): Promise<string> { return new Promise((resolve, reject) => execFile(this.settings.cliPath, ["session", "start", "--vault", vault, "--source-language", sourceLanguage], (error, stdout, stderr) => { if (error) return reject(new Error(stderr || error.message)); try { resolve(JSON.parse(stdout).session_id); } catch (e) { reject(e); } })); }
   prepareDraft(vault: string, sessionId: string): Promise<{ packet: string; title: string }> { return this.sessionCommand(["session", "draft", "--vault", vault, "--session-id", sessionId, "--confirm"]); }
   stageDraft(vault: string, sessionId: string): Promise<{ path: string }> { return this.sessionCommand(["session", "stage", "--vault", vault, "--session-id", sessionId, "--apply"]); }
+  async listSessions(vault: string): Promise<SessionSummary[]> { return (await this.sessionCommand<{ sessions: SessionSummary[] }>(["session", "list", "--vault", vault])).sessions; }
+  showSession(vault: string, sessionId: string): Promise<SessionRecord> { return this.sessionCommand(["session", "show", "--vault", vault, "--session-id", sessionId]); }
   private sessionCommand<T>(args: string[]): Promise<T> { return new Promise((resolve, reject) => execFile(this.settings.cliPath, args, (error, stdout, stderr) => { if (error) return reject(new Error(stderr || error.message)); try { resolve(JSON.parse(stdout)); } catch (e) { reject(e); } })); }
 }

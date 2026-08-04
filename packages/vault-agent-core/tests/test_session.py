@@ -13,6 +13,25 @@ class FakeProvider:
 
 
 class SessionTests(unittest.TestCase):
+    def test_lists_local_sessions_newest_first_without_reading_the_vault(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            index = VaultIndex(root, root / ".vault-agent.sqlite")
+            index.rebuild()
+            store = SessionStore(root / ".state" / "sessions", index)
+            first = store.create("en")
+            first.messages.append({"role": "user", "content": "First discussion"})
+            store._save(first)
+            second = store.create("zh-CN")
+            second.messages.append({"role": "user", "content": "第二个讨论"})
+            store._save(second)
+
+            summaries = store.list()
+
+            self.assertEqual([summary["id"] for summary in summaries], [second.id, first.id])
+            self.assertEqual(summaries[0]["preview"], "第二个讨论")
+            self.assertEqual(summaries[1]["source_language"], "en")
+
     def test_attaches_inspected_source_material_to_the_vault_aware_turn(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
