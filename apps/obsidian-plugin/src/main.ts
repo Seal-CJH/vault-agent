@@ -45,10 +45,33 @@ class VaultAgentView extends ItemView {
     let buffer = "";
     this.process.stdout?.on("data", chunk => { buffer += chunk.toString(); const lines = buffer.split("\n"); buffer = lines.pop() ?? ""; lines.filter(Boolean).forEach(line => { try { const event = JSON.parse(line); if (event.type === "text_delta") { if (body.textContent === "Preparing vault context…") body.empty(); body.dataset.markdown = (body.dataset.markdown === "Preparing vault context…" ? "" : body.dataset.markdown ?? "") + event.delta; body.appendText(event.delta); this.thread.scrollTop = this.thread.scrollHeight; } } catch { /* protocol errors go to stderr */ } }); });
     this.process.stderr?.on("data", chunk => { const error = `Setup error: ${chunk.toString().trim()}`; body.dataset.markdown = ""; body.setText(error); });
-    this.process.on("close", () => { this.process = null; this.sendButton.setText("↑ Send"); this.sendButton.removeClass("mod-warning"); if (body.textContent === "Preparing vault context…") body.setText("No response received."); else void this.renderMarkdown(body); });
+    this.process.on("close", () => { this.process = null; this.sendButton.setText("↑ Send"); this.sendButton.removeClass("mod-warning"); if (body.textContent === "Preparing vault context…") body.setText("No response received."); else { void this.renderMarkdown(body); this.addDraftAction(); } });
     this.process.on("error", error => { body.setText(`CLI could not start: ${error.message}. Check Vault Agent settings.`); });
   }
   private stop() { this.process?.kill("SIGTERM"); this.process = null; this.sendButton.setText("↑ Send"); this.sendButton.removeClass("mod-warning"); }
+  private addDraftAction() {
+    if (!this.sessionId) return;
+    const actions = this.thread.createDiv({ cls: "vault-agent-actions" });
+    const prepare = actions.createEl("button", { text: "Prepare ingest draft", cls: "vault-agent-action-primary" });
+    prepare.onclick = async () => {
+      prepare.disabled = true; prepare.setText("Preparing draft…");
+      try {
+        const draft = await this.plugin.prepareDraft(this.vaultPath(), this.sessionId!);
+        actions.empty();
+        const preview = this.append("agent", draft.packet);
+        await this.renderMarkdown(preview);
+        const confirm = actions.createEl("button", { text: "Confirm stage to Inbox", cls: "mod-cta vault-agent-action-primary" });
+        confirm.onclick = async () => {
+          confirm.disabled = true; confirm.setText("Staging…");
+          try {
+            const result = await this.plugin.stageDraft(this.vaultPath(), this.sessionId!);
+            actions.createSpan({ cls: "vault-agent-stage-result", text: `Saved to ${result.path}` });
+            confirm.remove();
+          } catch (error) { confirm.disabled = false; confirm.setText("Confirm stage to Inbox"); actions.createDiv({ cls: "vault-agent-action-error", text: error instanceof Error ? error.message : String(error) }); }
+        };
+      } catch (error) { prepare.disabled = false; prepare.setText("Prepare ingest draft"); actions.createDiv({ cls: "vault-agent-action-error", text: error instanceof Error ? error.message : String(error) }); }
+    };
+  }
   private vaultPath(): string { return (this.app.vault.adapter as unknown as { getBasePath(): string }).getBasePath(); }
 }
 class VaultAgentSettingTab extends PluginSettingTab { constructor(app: App, private plugin: VaultAgentPlugin) { super(app, plugin); } display() { this.containerEl.empty(); new Setting(this.containerEl).setName("Vault Agent CLI path").setDesc("Absolute path to the local launcher; API keys are never stored here.").addText(text => text.setValue(this.plugin.settings.cliPath).onChange(async value => { this.plugin.settings.cliPath = value || DEFAULT_SETTINGS.cliPath; await this.plugin.saveSettings(); })); } }
@@ -60,4 +83,7 @@ export default class VaultAgentPlugin extends Plugin {
   async saveSettings() { await this.saveData(this.settings); }
   providerConfig(): Promise<{ model: string; thinking: boolean }> { return new Promise((resolve, reject) => execFile(this.settings.cliPath, ["provider", "show"], (error, stdout) => { if (error) return reject(error); try { resolve(JSON.parse(stdout)); } catch (e) { reject(e); } })); }
   startSession(vault: string, sourceLanguage: string): Promise<string> { return new Promise((resolve, reject) => execFile(this.settings.cliPath, ["session", "start", "--vault", vault, "--source-language", sourceLanguage], (error, stdout, stderr) => { if (error) return reject(new Error(stderr || error.message)); try { resolve(JSON.parse(stdout).session_id); } catch (e) { reject(e); } })); }
+  prepareDraft(vault: string, sessionId: string): Promise<{ packet: string; title: string }> { return this.sessionCommand(["session", "draft", "--vault", vault, "--session-id", sessionId, "--confirm"]); }
+  stageDraft(vault: string, sessionId: string): Promise<{ path: string }> { return this.sessionCommand(["session", "stage", "--vault", vault, "--session-id", sessionId, "--apply"]); }
+  private sessionCommand<T>(args: string[]): Promise<T> { return new Promise((resolve, reject) => execFile(this.settings.cliPath, args, (error, stdout, stderr) => { if (error) return reject(new Error(stderr || error.message)); try { resolve(JSON.parse(stdout)); } catch (e) { reject(e); } })); }
 }

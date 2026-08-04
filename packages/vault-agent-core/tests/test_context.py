@@ -23,3 +23,18 @@ class ContextCompilerTests(unittest.TestCase):
             self.assertIn("03_Wiki/Claims/vault-context.md", bundle.paths)
             self.assertIn("Preserve source language.", bundle.prompt)
             self.assertIn("Vault context", bundle.prompt)
+
+    def test_includes_a_relationship_summary_for_retrieved_notes(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "03_Wiki").mkdir(parents=True)
+            (root / "03_Wiki" / "continuity.md").write_text(
+                "# Continuity\n\nConnect to [[LLM]] and [[agent|Agent]].", encoding="utf-8"
+            )
+            index = VaultIndex(root, root / ".vault-agent.sqlite")
+            index.rebuild()
+
+            bundle = ContextCompiler(index).compile("continuity")
+
+            self.assertIn("<vault-relationships>", bundle.prompt)
+            self.assertIn("03_Wiki/continuity.md → [[LLM]], [[agent]]", bundle.prompt)

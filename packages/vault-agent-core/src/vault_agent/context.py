@@ -30,4 +30,7 @@ class ContextCompiler:
         sections = []
         for document in documents:
             sections.append(f"<vault-document path=\"{document.path}\">\n{document.content[:self.max_document_chars]}\n</vault-document>")
+        relations = [f"{document.path} → " + ", ".join(f"[[{link}]]" for link in document.links) for document in documents if document.links]
+        if relations:
+            sections.append("<vault-relationships>\n" + "\n".join(relations) + "\n</vault-relationships>")
         return ContextBundle(paths=[document.path for document in documents], prompt="\n\n".join(sections))

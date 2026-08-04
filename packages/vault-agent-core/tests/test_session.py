@@ -12,6 +12,20 @@ class FakeProvider:
 
 
 class SessionTests(unittest.TestCase):
+    def test_persists_a_draft_outside_the_vault(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            index = VaultIndex(root, root / ".vault-agent.sqlite")
+            index.rebuild()
+            store = SessionStore(root / ".state" / "sessions", index)
+            session = store.create("en")
+
+            stored = store.save_draft(session.id, "# Proposed packet")
+
+            self.assertEqual(store.load_draft(session.id), "# Proposed packet")
+            self.assertEqual(stored, root / ".state" / "drafts" / f"{session.id}.md")
+            self.assertFalse((root / "01_Inbox").exists())
+
     def test_persists_history_and_compiles_vault_context_for_each_turn(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

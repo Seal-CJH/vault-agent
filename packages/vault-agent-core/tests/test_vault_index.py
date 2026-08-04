@@ -27,6 +27,20 @@ class VaultIndexTests(unittest.TestCase):
             self.assertEqual(results[0].title, "Agent memory")
             self.assertEqual(results[0].tags, ["domain/ai"])
 
+    def test_extracts_wikilinks_and_makes_them_searchable(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "03_Wiki").mkdir(parents=True)
+            (root / "03_Wiki" / "connected.md").write_text(
+                "# Connected\n\nSupports [[LLM]] and [[agent|Agent]].\n", encoding="utf-8"
+            )
+            index = VaultIndex(root, root / ".vault-agent.sqlite")
+            index.rebuild()
+
+            document = index.search("LLM")[0]
+
+            self.assertEqual(document.links, ["LLM", "agent"])
+
     def test_returns_always_on_governance_documents(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
