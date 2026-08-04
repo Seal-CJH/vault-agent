@@ -19,4 +19,10 @@ Without `--apply`, this prints the proposed Inbox path and writes nothing. `--ap
 
 ## Model providers
 
-DeepSeek is planned as the first remote provider. API credentials are deliberately not implemented in the plugin and must never be committed. The future `configure-provider` command will use the OS keychain and require an explicit send confirmation for every remote turn.
+DeepSeek is the first remote provider. Configure its credential locally with:
+
+```bash
+PYTHONPATH=packages/vault-agent-core/src python3 -m vault_agent.cli configure-provider deepseek
+```
+
+The command stores the key in macOS Keychain; it never writes the key into the vault, plugin, or Git repository. Provider calls require an explicit confirmation flag in the local core. The Obsidian panel remains a desktop-only installation skeleton while its discussion workflow is implemented.
