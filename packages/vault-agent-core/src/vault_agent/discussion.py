@@ -5,7 +5,7 @@ class DiscussionError(ValueError):
     pass
 
 
-def discuss(provider, message: str, source_language: str) -> str:
+def _messages(message: str, source_language: str) -> list[dict[str, str]]:
     if not message.strip():
         raise DiscussionError("message cannot be empty")
     system = (
@@ -14,7 +14,12 @@ def discuss(provider, message: str, source_language: str) -> str:
         "do not translate it during ingest. Separate source facts, user judgments, model inferences, "
         "and open questions. Do not claim to write files or change core Wiki objects."
     )
-    return provider.complete(
-        [{"role": "system", "content": system}, {"role": "user", "content": message}],
-        confirmed=True,
-    )
+    return [{"role": "system", "content": system}, {"role": "user", "content": message}]
+
+
+def discuss(provider, message: str, source_language: str) -> str:
+    return provider.complete(_messages(message, source_language), confirmed=True)
+
+
+def stream_discuss(provider, message: str, source_language: str):
+    return provider.stream(_messages(message, source_language), confirmed=True)

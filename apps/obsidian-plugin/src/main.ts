@@ -1,95 +1,62 @@
 import { App, ItemView, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from "obsidian";
-import { execFile } from "child_process";
+import { ChildProcess, execFile, spawn } from "child_process";
 
 const VIEW_TYPE = "vault-agent";
-
 interface VaultAgentSettings { cliPath: string; }
-const DEFAULT_SETTINGS: VaultAgentSettings = { cliPath: "vault-agent" };
+const DEFAULT_SETTINGS: VaultAgentSettings = { cliPath: "/Users/seal/Projects/Vault-Agent/scripts/vault-agent" };
 
 class VaultAgentView extends ItemView {
+  private process: ChildProcess | null = null;
+  private composer!: HTMLTextAreaElement;
+  private sendButton!: HTMLButtonElement;
+  private thread!: HTMLElement;
+  private modelChip!: HTMLElement;
+  private sessionId: string | null = null;
   constructor(leaf: WorkspaceLeaf, private plugin: VaultAgentPlugin) { super(leaf); }
   getViewType() { return VIEW_TYPE; }
   getDisplayText() { return "Vault Agent"; }
   async onOpen() {
-    this.contentEl.createEl("h2", { text: "Vault Agent" });
-    const status = this.contentEl.createEl("p", { text: "Reading local provider configuration…" });
-    try {
-      const config = await this.plugin.providerConfig();
-      status.setText(`DeepSeek · ${config.model} · thinking ${config.thinking ? "enabled" : "disabled"} · ${config.reasoning_effort}`);
-    } catch {
-      status.setText("Local CLI is not configured. Set its path in Vault Agent settings.");
-    }
-    this.contentEl.createEl("h3", { text: "Discuss a source" });
-    this.contentEl.createEl("p", { text: "Paste a link, book excerpt, note, or question. Clicking Send explicitly shares this turn with DeepSeek." });
-    const language = this.contentEl.createEl("select");
-    ["en", "zh-CN"].forEach(code => language.createEl("option", { text: code, value: code }));
-    const input = this.contentEl.createEl("textarea", { attr: { placeholder: "What did you learn, and what should be retained?" } });
-    input.rows = 7;
-    const send = this.contentEl.createEl("button", { text: "Send to DeepSeek" });
-    const conversation = this.contentEl.createDiv({ cls: "vault-agent-conversation" });
-    send.addEventListener("click", async () => {
-      const message = input.value.trim();
-      if (!message) return;
-      send.disabled = true;
-      this.append(conversation, "You", message);
-      try {
-        const reply = await this.plugin.discuss(message, language.value);
-        this.append(conversation, "Vault Agent", reply);
-        input.value = "";
-      } catch (error) {
-        this.append(conversation, "Error", error instanceof Error ? error.message : String(error));
-      } finally { send.disabled = false; }
-    });
+    this.contentEl.empty(); this.contentEl.addClass("vault-agent-shell");
+    const header = this.contentEl.createDiv({ cls: "vault-agent-header" });
+    header.createEl("strong", { text: "Vault Agent" });
+    const reset = header.createEl("button", { text: "＋ New", cls: "vault-agent-quiet" });
+    reset.onclick = () => { this.thread.empty(); this.sessionId = null; this.composer.value = ""; this.composer.focus(); };
+    this.thread = this.contentEl.createDiv({ cls: "vault-agent-thread" });
+    this.thread.createDiv({ cls: "vault-agent-empty", text: "Paste a link, excerpt, note, or question to start a source discussion." });
+    const composer = this.contentEl.createDiv({ cls: "vault-agent-composer" });
+    this.composer = composer.createEl("textarea", { attr: { placeholder: "Discuss this source…" } }); this.composer.rows = 3;
+    this.composer.addEventListener("keydown", event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void this.send(); } });
+    const bar = composer.createDiv({ cls: "vault-agent-composer-bar" });
+    const language = bar.createEl("select"); ["zh-CN", "en"].forEach(value => language.createEl("option", { value, text: value }));
+    this.modelChip = bar.createSpan({ cls: "vault-agent-model-chip", text: "Checking model…" });
+    this.sendButton = bar.createEl("button", { text: "↑ Send", cls: "mod-cta vault-agent-send" });
+    this.sendButton.onclick = () => this.process ? this.stop() : void this.send(language.value);
+    await this.refreshModel();
   }
-  append(container: HTMLElement, speaker: string, message: string) {
-    const turn = container.createDiv({ cls: "vault-agent-turn" });
-    turn.createEl("strong", { text: `${speaker}: ` });
-    turn.createEl("span", { text: message });
+  async refreshModel() { try { const c = await this.plugin.providerConfig(); this.modelChip.setText(`DeepSeek · ${c.model.replace("deepseek-", "")} · Thinking ${c.thinking ? "on" : "off"}`); } catch { this.modelChip.setText("CLI unavailable — check settings"); } }
+  private append(role: string, text = "") { const card = this.thread.createDiv({ cls: `vault-agent-message vault-agent-${role}` }); const meta = card.createDiv({ cls: "vault-agent-message-meta" }); meta.createDiv({ cls: "vault-agent-role", text: role === "user" ? "You" : "Vault Agent" }); const body = card.createDiv({ cls: "vault-agent-body", text }); const copy = meta.createEl("button", { text: "Copy", cls: "vault-agent-copy" }); copy.onclick = async () => { await navigator.clipboard.writeText(body.textContent ?? ""); copy.setText("Copied"); window.setTimeout(() => copy.setText("Copy"), 1200); }; this.thread.scrollTop = this.thread.scrollHeight; return body; }
+  private async send(language = "zh-CN") {
+    const message = this.composer.value.trim(); if (!message || this.process) return;
+    this.thread.querySelector(".vault-agent-empty")?.remove(); this.append("user", message); const body = this.append("agent", "Preparing vault context…"); this.composer.value = "";
+    this.sendButton.setText("■ Stop"); this.sendButton.addClass("mod-warning");
+    try { this.sessionId ??= await this.plugin.startSession(this.vaultPath(), language); } catch (error) { body.setText(`Vault index could not start: ${error instanceof Error ? error.message : String(error)}`); this.stop(); return; }
+    this.process = spawn(this.plugin.settings.cliPath, ["session", "turn", "--vault", this.vaultPath(), "--session-id", this.sessionId, "--confirm", "--message", message]);
+    let buffer = "";
+    this.process.stdout?.on("data", chunk => { buffer += chunk.toString(); const lines = buffer.split("\n"); buffer = lines.pop() ?? ""; lines.filter(Boolean).forEach(line => { try { const event = JSON.parse(line); if (event.type === "text_delta") { if (body.textContent === "Preparing vault context…") body.empty(); body.appendText(event.delta); this.thread.scrollTop = this.thread.scrollHeight; } } catch { /* protocol errors go to stderr */ } }); });
+    this.process.stderr?.on("data", chunk => { body.setText(`Setup error: ${chunk.toString().trim()}`); });
+    this.process.on("close", () => { this.process = null; this.sendButton.setText("↑ Send"); this.sendButton.removeClass("mod-warning"); if (body.textContent === "Preparing vault context…") body.setText("No response received."); });
+    this.process.on("error", error => { body.setText(`CLI could not start: ${error.message}. Check Vault Agent settings.`); });
   }
+  private stop() { this.process?.kill("SIGTERM"); this.process = null; this.sendButton.setText("↑ Send"); this.sendButton.removeClass("mod-warning"); }
+  private vaultPath(): string { return (this.app.vault.adapter as unknown as { getBasePath(): string }).getBasePath(); }
 }
-
-class VaultAgentSettingTab extends PluginSettingTab {
-  constructor(app: App, private plugin: VaultAgentPlugin) { super(app, plugin); }
-  display() {
-    this.containerEl.empty();
-    new Setting(this.containerEl)
-      .setName("Vault Agent CLI path")
-      .setDesc("The installed vault-agent executable. No API key is stored by Obsidian.")
-      .addText(text => text.setValue(this.plugin.settings.cliPath).onChange(async value => {
-        this.plugin.settings.cliPath = value || DEFAULT_SETTINGS.cliPath;
-        await this.plugin.saveSettings();
-      }));
-  }
-}
-
+class VaultAgentSettingTab extends PluginSettingTab { constructor(app: App, private plugin: VaultAgentPlugin) { super(app, plugin); } display() { this.containerEl.empty(); new Setting(this.containerEl).setName("Vault Agent CLI path").setDesc("Absolute path to the local launcher; API keys are never stored here.").addText(text => text.setValue(this.plugin.settings.cliPath).onChange(async value => { this.plugin.settings.cliPath = value || DEFAULT_SETTINGS.cliPath; await this.plugin.saveSettings(); })); } }
 export default class VaultAgentPlugin extends Plugin {
   settings: VaultAgentSettings = DEFAULT_SETTINGS;
-  async onload() {
-    await this.loadSettings();
-    this.registerView(VIEW_TYPE, leaf => new VaultAgentView(leaf, this));
-    this.addRibbonIcon("messages-square", "Open Vault Agent", () => this.activateView());
-    this.addSettingTab(new VaultAgentSettingTab(this.app, this));
-  }
-  async activateView() {
-    const leaf = this.app.workspace.getRightLeaf(false);
-    if (leaf) await leaf.setViewState({ type: VIEW_TYPE, active: true });
-  }
+  async onload() { await this.loadSettings(); this.registerView(VIEW_TYPE, leaf => new VaultAgentView(leaf, this)); this.addRibbonIcon("messages-square", "Open Vault Agent", () => this.activateView()); this.addSettingTab(new VaultAgentSettingTab(this.app, this)); }
+  async activateView() { const leaf = this.app.workspace.getRightLeaf(false); if (leaf) await leaf.setViewState({ type: VIEW_TYPE, active: true }); }
   async loadSettings() { this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) }; }
   async saveSettings() { await this.saveData(this.settings); }
-  providerConfig(): Promise<{ model: string; thinking: boolean; reasoning_effort: string }> {
-    return new Promise((resolve, reject) => execFile(this.settings.cliPath, ["provider", "show"], (error, stdout) => {
-      if (error) return reject(error);
-      try { resolve(JSON.parse(stdout)); } catch (parseError) { reject(parseError); }
-    }));
-  }
-  discuss(message: string, sourceLanguage: string): Promise<string> {
-    return new Promise((resolve, reject) => execFile(
-      this.settings.cliPath,
-      ["discuss", "--confirm", "--source-language", sourceLanguage, "--message", message],
-      (error, stdout, stderr) => {
-        if (error) return reject(new Error(stderr || error.message));
-        try { resolve(JSON.parse(stdout).reply); } catch (parseError) { reject(parseError); }
-      }
-    ));
-  }
+  providerConfig(): Promise<{ model: string; thinking: boolean }> { return new Promise((resolve, reject) => execFile(this.settings.cliPath, ["provider", "show"], (error, stdout) => { if (error) return reject(error); try { resolve(JSON.parse(stdout)); } catch (e) { reject(e); } })); }
+  startSession(vault: string, sourceLanguage: string): Promise<string> { return new Promise((resolve, reject) => execFile(this.settings.cliPath, ["session", "start", "--vault", vault, "--source-language", sourceLanguage], (error, stdout, stderr) => { if (error) return reject(new Error(stderr || error.message)); try { resolve(JSON.parse(stdout).session_id); } catch (e) { reject(e); } })); }
 }

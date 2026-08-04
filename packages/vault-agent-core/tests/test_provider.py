@@ -34,3 +34,18 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(provider.model, "deepseek-v4-pro")
         self.assertTrue(provider.thinking)
         self.assertEqual(provider.reasoning_effort, "high")
+
+    def test_streams_text_deltas_after_explicit_confirmation(self):
+        def stream_request(*_):
+            return iter([
+                'data: {"choices":[{"delta":{"content":"Hello"}}]}',
+                'data: {"choices":[{"delta":{"content":" world"}}]}',
+                "data: [DONE]",
+            ])
+
+        provider = DeepSeekProvider(api_key="secret", stream_request=stream_request)
+
+        self.assertEqual(
+            list(provider.stream([{"role": "user", "content": "hello"}], confirmed=True)),
+            ["Hello", " world"],
+        )

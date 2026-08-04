@@ -1,6 +1,6 @@
 import unittest
 
-from vault_agent.discussion import DiscussionError, discuss
+from vault_agent.discussion import DiscussionError, discuss, stream_discuss
 
 
 class FakeProvider:
@@ -12,6 +12,11 @@ class FakeProvider:
         self.messages = messages
         self.confirmed = confirmed
         return "A focused reply"
+
+    def stream(self, messages, confirmed):
+        self.messages = messages
+        self.confirmed = confirmed
+        return iter(["A ", "stream"])
 
 
 class DiscussionTests(unittest.TestCase):
@@ -28,3 +33,9 @@ class DiscussionTests(unittest.TestCase):
     def test_rejects_empty_messages_before_any_provider_call(self):
         with self.assertRaisesRegex(DiscussionError, "empty"):
             discuss(FakeProvider(), "   ", "zh-CN")
+
+    def test_streams_a_discussion_response(self):
+        provider = FakeProvider()
+
+        self.assertEqual(list(stream_discuss(provider, "Discuss this", "zh-CN")), ["A ", "stream"])
+        self.assertTrue(provider.confirmed)

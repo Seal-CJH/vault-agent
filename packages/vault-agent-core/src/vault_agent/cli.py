@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import json
+import hashlib
 from pathlib import Path
 
 from .staging import stage_packet
@@ -10,7 +11,9 @@ from .credentials import save_key
 from .settings import ProviderSettings, load_settings, save_settings
 from .credentials import load_key
 from .provider import provider_from_settings
-from .discussion import discuss
+from .discussion import discuss, stream_discuss
+from .session import SessionStore
+from .vault_index import VaultIndex
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -34,6 +37,14 @@ def main(argv: list[str] | None = None) -> int:
     discussion.add_argument("--message", required=True)
     discussion.add_argument("--source-language", required=True)
     discussion.add_argument("--confirm", action="store_true", help="explicitly authorizes this remote send")
+    discussion.add_argument("--stream", action="store_true", help="emit newline-delimited streaming events")
+    session = commands.add_parser("session", help="manage local vault-aware discussion sessions")
+    session.add_argument("action", choices=["start", "turn"])
+    session.add_argument("--vault", required=True, type=Path)
+    session.add_argument("--source-language", choices=["zh-CN", "en"])
+    session.add_argument("--session-id")
+    session.add_argument("--message")
+    session.add_argument("--confirm", action="store_true")
     args = parser.parse_args(argv)
     if args.command == "stage":
         result = stage_packet(args.vault, args.packet.read_text(encoding="utf-8"), args.apply)
@@ -65,8 +76,38 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "discuss":
         if not args.confirm:
             parser.error("discuss requires --confirm before content is sent remotely")
-        reply = discuss(provider_from_settings(load_key("deepseek"), load_settings()), args.message, args.source_language)
+        settings = load_settings()
+        agent = provider_from_settings(load_key("deepseek"), settings)
+        if args.stream:
+            print(json.dumps({"type": "started", **settings.__dict__}, ensure_ascii=False), flush=True)
+            for delta in stream_discuss(agent, args.message, args.source_language):
+                print(json.dumps({"type": "text_delta", "delta": delta}, ensure_ascii=False), flush=True)
+            print(json.dumps({"type": "completed"}), flush=True)
+            return 0
+        reply = discuss(agent, args.message, args.source_language)
         print(json.dumps({"reply": reply}, ensure_ascii=False))
+        return 0
+    if args.command == "session":
+        if not args.vault.is_dir():
+            parser.error("--vault must be an existing vault directory")
+        fingerprint = hashlib.sha256(str(args.vault.resolve()).encode("utf-8")).hexdigest()[:16]
+        state = Path.home() / "Library" / "Application Support" / "Vault Agent" / "vaults" / fingerprint
+        index = VaultIndex(args.vault, state / "index.sqlite")
+        index.rebuild()
+        store = SessionStore(state / "sessions", index)
+        if args.action == "start":
+            if not args.source_language:
+                parser.error("session start requires --source-language")
+            created = store.create(args.source_language)
+            print(json.dumps({"session_id": created.id, "indexed": True}))
+            return 0
+        if not args.session_id or not args.message or not args.confirm:
+            parser.error("session turn requires --session-id, --message, and --confirm")
+        agent = provider_from_settings(load_key("deepseek"), load_settings())
+        print(json.dumps({"type": "started", "session_id": args.session_id}), flush=True)
+        for delta in store.turn(args.session_id, agent, args.message):
+            print(json.dumps({"type": "text_delta", "delta": delta}, ensure_ascii=False), flush=True)
+        print(json.dumps({"type": "completed"}), flush=True)
         return 0
     return 1
 
