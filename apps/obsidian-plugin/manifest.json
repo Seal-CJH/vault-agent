@@ -1,0 +1,9 @@
+{
+  "id": "vault-agent",
+  "name": "Vault Agent",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "A local, approval-gated intake assistant.",
+  "author": "Vault Agent contributors",
+  "isDesktopOnly": true
+}
