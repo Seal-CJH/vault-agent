@@ -53,6 +53,18 @@ def handle_request(request: dict) -> Iterable[dict]:
     if method == "session.show":
         yield _completed(request_id, asdict(store.load(session_id)))
         return
+    if method == "session.attach_source":
+        source = store.attach_source(
+            session_id,
+            kind=_required(params, "kind"),
+            url=params.get("url"),
+            title=params.get("title"),
+            author=params.get("author"),
+            excerpt=params.get("excerpt"),
+            content_language=params.get("source_language"),
+        )
+        yield _completed(request_id, source)
+        return
     if method == "session.stage":
         if params.get("apply") is not True:
             raise ValueError("session.stage requires apply: true")

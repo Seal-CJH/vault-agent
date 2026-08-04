@@ -26,6 +26,23 @@ class RpcTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "confirm_remote"):
             list(handle_request({"id": "req-2", "method": "session.turn", "params": {"vault": "/tmp/vault", "session_id": "x", "message": "hello"}}))
 
+    def test_attaches_a_book_source_locally_without_remote_confirmation(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            vault = root / "vault"
+            vault.mkdir()
+            with patch("vault_agent.rpc.Path.home", return_value=root):
+                started = list(handle_request({"id": "start", "method": "session.start", "params": {"vault": str(vault), "source_language": "en"}}))
+                session_id = started[0]["result"]["session_id"]
+                events = list(handle_request({
+                    "id": "book", "method": "session.attach_source",
+                    "params": {"vault": str(vault), "session_id": session_id, "kind": "book", "title": "The Book", "excerpt": "A passage.", "source_language": "en"},
+                }))
+
+            self.assertEqual(events[0]["type"], "completed")
+            self.assertEqual(events[0]["result"]["kind"], "book")
+            self.assertEqual(events[0]["result"]["content_language"], "en")
+
     def test_emits_jsonl_events_with_request_id(self):
         source = StringIO(json.dumps({"id": "req-3", "method": "provider.show", "params": {}}) + "\n")
         destination = StringIO()

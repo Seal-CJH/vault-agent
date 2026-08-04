@@ -13,9 +13,10 @@ For local debugging, link this directory into the target vault as `.obsidian/plu
 
 Use the pane as a client of the local core:
 
-1. Select the source language and send a source, excerpt, or question. Replies stream into the conversation and render as Markdown when complete.
-2. Choose **Prepare ingest draft** to ask the core for a validated Packet preview.
-3. Review it and choose **Confirm stage to Inbox** to let the core write the note. Nothing is written before this confirmation.
+1. For a book, choose **＋ Book**, add its title, optional author, source language, and your excerpt. This is stored only in the local session; it neither fetches the book nor calls a model. Then send a discussion message when you are ready to share that turn with the configured provider.
+2. Select the source language and send a source, excerpt, or question. Replies stream into the conversation and render as Markdown when complete.
+3. Choose **Prepare ingest draft** to ask the core for a validated Packet preview.
+4. Review it and choose **Confirm stage to Inbox** to let the core write the note. Nothing is written before this confirmation.
 
 Use **History** to reopen a local session. Conversation state is stored by the Core outside the vault, and restoring a session does not make a model call.
 Each history item also displays the model last used by that session; the local audit records model, thinking state, reasoning effort, and timestamp but never an API key.

@@ -67,6 +67,32 @@ class SessionStore:
             for source in session.sources if source.get("provenance") not in known
         ]
 
+    def attach_source(
+        self,
+        session_id: str,
+        *,
+        kind: str,
+        url: str | None = None,
+        title: str | None = None,
+        author: str | None = None,
+        excerpt: str | None = None,
+        content_language: str | None = None,
+    ) -> dict[str, str | None]:
+        """Store explicitly supplied source material locally for later discussion turns."""
+        session = self.load(session_id)
+        material: SourceMaterial = self.source_inspector(
+            kind=kind,
+            url=url,
+            title=title,
+            author=author,
+            excerpt=excerpt,
+            content_language=content_language,
+        )
+        if not any(source.get("provenance") == material.provenance for source in session.sources):
+            session.sources.append(asdict(material))
+            self._save(session)
+        return {key: getattr(material, key) for key in ("kind", "title", "provenance", "content_language")}
+
     def record_provider_call(self, session_id: str, provider) -> None:
         session = self.load(session_id)
         self._record_provider_call(session, provider)

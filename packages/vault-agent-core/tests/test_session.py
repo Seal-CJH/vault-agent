@@ -62,6 +62,30 @@ class SessionTests(unittest.TestCase):
 
             self.assertIn("Persistent source body.", second.messages[0]["content"])
 
+    def test_attaches_a_user_supplied_book_excerpt_without_a_model_call(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            index = VaultIndex(root, root / ".vault-agent.sqlite")
+            index.rebuild()
+            store = SessionStore(root / ".sessions", index)
+            session = store.create("zh-CN")
+
+            source = store.attach_source(
+                session.id,
+                kind="book",
+                title="The Book",
+                author="An Author",
+                excerpt="A reader supplied passage.",
+                content_language="en",
+            )
+            provider = FakeProvider()
+            "".join(store.turn(session.id, provider, "What should I retain from this?"))
+
+            self.assertEqual(source["kind"], "book")
+            self.assertEqual(source["content_language"], "en")
+            self.assertEqual(store.load(session.id).sources[0]["text"], "A reader supplied passage.")
+            self.assertIn("A reader supplied passage.", provider.messages[0]["content"])
+
     def test_lists_local_sessions_newest_first_without_reading_the_vault(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

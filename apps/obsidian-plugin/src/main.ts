@@ -1,4 +1,4 @@
-import { App, ItemView, MarkdownRenderer, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from "obsidian";
+import { App, ItemView, MarkdownRenderer, Modal, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from "obsidian";
 import { ChildProcess, spawn } from "child_process";
 
 const VIEW_TYPE = "vault-agent";
@@ -6,6 +6,7 @@ interface VaultAgentSettings { cliPath: string; }
 interface SessionSummary { id: string; preview: string; source_language: string; updated_at: string; last_model: string; }
 interface SessionRecord { id: string; source_language: string; messages: Array<{ role: string; content: string }>; }
 interface ReviewReport { total_notes: number; inbox_notes: string[]; claims_without_links: string[]; sources_without_links: string[]; }
+interface SourceSummary { kind: string; title: string; provenance: string; content_language?: string; }
 const DEFAULT_SETTINGS: VaultAgentSettings = { cliPath: "/Users/seal/Projects/Vault-Agent/scripts/vault-agent" };
 
 class VaultAgentView extends ItemView {
@@ -36,6 +37,8 @@ class VaultAgentView extends ItemView {
     this.composer.addEventListener("keydown", event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter") { event.preventDefault(); void this.send(); } });
     const bar = composer.createDiv({ cls: "vault-agent-composer-bar" });
     this.language = bar.createEl("select"); ["zh-CN", "en"].forEach(value => this.language.createEl("option", { value, text: value }));
+    const book = bar.createEl("button", { text: "＋ Book", cls: "vault-agent-book" });
+    book.onclick = () => this.openBookIntake();
     this.modelChip = bar.createSpan({ cls: "vault-agent-model-chip", text: "Checking model…" });
     this.sendButton = bar.createEl("button", { text: "↑ Send", cls: "mod-cta vault-agent-send" });
     this.sendButton.onclick = () => this.process ? this.stop() : void this.send(this.language.value);
@@ -58,6 +61,22 @@ class VaultAgentView extends ItemView {
     this.process.on("error", error => { body.setText(`CLI could not start: ${error.message}. Check Vault Agent settings.`); });
   }
   private stop() { this.process?.kill("SIGTERM"); this.process = null; this.sendButton.setText("↑ Send"); this.sendButton.removeClass("mod-warning"); }
+  private openBookIntake() {
+    new BookIntakeModal(this.app, this.language.value, async values => {
+      try {
+        this.sessionId ??= await this.plugin.startSession(this.vaultPath(), values.sourceLanguage);
+        const source = await this.plugin.attachSource(this.vaultPath(), this.sessionId, {
+          kind: "book", title: values.title, author: values.author || undefined,
+          excerpt: values.excerpt || undefined, source_language: values.sourceLanguage,
+        });
+        this.thread.querySelector(".vault-agent-empty")?.remove();
+        const status = this.append("agent", `> Source added locally: **${source.title}** (book, ${source.content_language || "language unknown"})\n> ${source.provenance}`);
+        await this.renderMarkdown(status);
+        this.composer.value = `I want to discuss “${values.title}”: `;
+        this.composer.focus();
+      } catch (error) { throw new Error(error instanceof Error ? error.message : String(error)); }
+    }).open();
+  }
   private async showHistory() {
     this.thread.empty();
     const panel = this.thread.createDiv({ cls: "vault-agent-history" });
@@ -119,6 +138,35 @@ class VaultAgentView extends ItemView {
   }
   private vaultPath(): string { return (this.app.vault.adapter as unknown as { getBasePath(): string }).getBasePath(); }
 }
+class BookIntakeModal extends Modal {
+  constructor(
+    app: App,
+    private initialLanguage: string,
+    private onSubmit: (values: { title: string; author: string; excerpt: string; sourceLanguage: string }) => Promise<void>,
+  ) { super(app); }
+  onOpen() {
+    this.contentEl.addClass("vault-agent-book-modal");
+    this.contentEl.createEl("h2", { text: "Add book source" });
+    this.contentEl.createEl("p", { text: "The book is never fetched. Only the details and excerpt you provide remain in this local session." });
+    const title = this.contentEl.createEl("input", { type: "text", attr: { placeholder: "Book title", "aria-label": "Book title" } });
+    const author = this.contentEl.createEl("input", { type: "text", attr: { placeholder: "Author (optional)", "aria-label": "Book author" } });
+    const language = this.contentEl.createEl("select", { attr: { "aria-label": "Source language" } });
+    ["zh-CN", "en"].forEach(value => language.createEl("option", { value, text: value })); language.value = this.initialLanguage;
+    const excerpt = this.contentEl.createEl("textarea", { attr: { placeholder: "Your excerpt or reading notes (recommended)", "aria-label": "Book excerpt" } }); excerpt.rows = 8;
+    const error = this.contentEl.createDiv({ cls: "vault-agent-action-error" });
+    const submit = this.contentEl.createEl("button", { text: "Add locally", cls: "mod-cta" });
+    submit.onclick = async () => {
+      if (!title.value.trim()) { error.setText("A book title is required."); return; }
+      submit.disabled = true; submit.setText("Adding…"); error.empty();
+      try {
+        await this.onSubmit({ title: title.value.trim(), author: author.value.trim(), excerpt: excerpt.value.trim(), sourceLanguage: language.value });
+        this.close();
+      } catch (reason) { submit.disabled = false; submit.setText("Add locally"); error.setText(reason instanceof Error ? reason.message : String(reason)); }
+    };
+    title.focus();
+  }
+  onClose() { this.contentEl.removeClass("vault-agent-book-modal"); this.contentEl.empty(); }
+}
 class VaultAgentSettingTab extends PluginSettingTab { constructor(app: App, private plugin: VaultAgentPlugin) { super(app, plugin); } display() { this.containerEl.empty(); new Setting(this.containerEl).setName("Vault Agent CLI path").setDesc("Absolute path to the local launcher; API keys are never stored here.").addText(text => text.setValue(this.plugin.settings.cliPath).onChange(async value => { this.plugin.settings.cliPath = value || DEFAULT_SETTINGS.cliPath; await this.plugin.saveSettings(); })); } }
 export default class VaultAgentPlugin extends Plugin {
   settings: VaultAgentSettings = DEFAULT_SETTINGS;
@@ -128,6 +176,7 @@ export default class VaultAgentPlugin extends Plugin {
   async saveSettings() { await this.saveData(this.settings); }
   providerConfig(): Promise<{ model: string; thinking: boolean }> { return this.rpcCall("provider.show", {}); }
   async startSession(vault: string, sourceLanguage: string): Promise<string> { return (await this.rpcCall<{ session_id: string }>("session.start", { vault, source_language: sourceLanguage })).session_id; }
+  attachSource(vault: string, sessionId: string, source: Record<string, unknown>): Promise<SourceSummary> { return this.rpcCall("session.attach_source", { vault, session_id: sessionId, ...source }); }
   prepareDraft(vault: string, sessionId: string): Promise<{ packet: string; title: string }> { return this.rpcCall("session.draft", { vault, session_id: sessionId, confirm_remote: true }); }
   stageDraft(vault: string, sessionId: string): Promise<{ path: string }> { return this.rpcCall("session.stage", { vault, session_id: sessionId, apply: true }); }
   async listSessions(vault: string): Promise<SessionSummary[]> { return (await this.rpcCall<{ sessions: SessionSummary[] }>("session.list", { vault })).sessions; }
