@@ -20,13 +20,14 @@ class SessionTests(unittest.TestCase):
             index.rebuild()
             material = SourceMaterial("article", "Source title", "Author", "https://example.test/a", "en", "Source body.")
             store = SessionStore(root / ".sessions", index, source_inspector=lambda **_: material)
-            session = store.create("en")
+            session = store.create("zh-CN")
             provider = FakeProvider()
 
             "".join(store.turn(session.id, provider, "Discuss https://example.test/a"))
 
             self.assertIn("<source-material", provider.messages[0]["content"])
             self.assertIn("Source body.", provider.messages[0]["content"])
+            self.assertIn("known source-material language over the declared default", provider.messages[0]["content"])
             self.assertEqual(store.load(session.id).sources[0]["provenance"], "https://example.test/a")
 
     def test_persists_a_draft_outside_the_vault(self):
