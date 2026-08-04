@@ -22,7 +22,14 @@ def prepare_draft(store: SessionStore, session_id: str, provider) -> Packet:
         "Create one complete Markdown Conversation Ingest Packet from this discussion. "
         "Return only the packet, with YAML frontmatter and all required Ingest Proposal headings. "
         "Keep source-derived content in the declared source language. Do not create or edit core Wiki objects.\n\n"
-        f"VAULT CONTEXT:\n{context.prompt}\n\nSESSION:\n"
+        f"VAULT CONTEXT:\n{context.prompt}\n\nSOURCES:\n"
+        + "\n".join(
+            f"- kind: {source.get('kind', 'unknown')}\n  title: {source.get('title', 'unknown')}\n"
+            f"  provenance: {source.get('provenance', 'unknown')}\n"
+            f"  content_language: {source.get('content_language', 'unknown')}"
+            for source in session.sources
+        )
+        + "\n\nSESSION:\n"
         + "\n".join(f"{m['role']}: {m['content']}" for m in session.messages)
     )
     raw = provider.complete([{"role": "system", "content": instruction}, {"role": "user", "content": "Prepare the packet now."}], confirmed=True)

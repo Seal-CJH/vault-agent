@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 import getpass
 import json
 import hashlib
@@ -15,6 +16,7 @@ from .discussion import discuss, stream_discuss
 from .session import SessionStore
 from .vault_index import VaultIndex
 from .draft import prepare_draft
+from .sources import inspect_source
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -39,6 +41,14 @@ def main(argv: list[str] | None = None) -> int:
     discussion.add_argument("--source-language", required=True)
     discussion.add_argument("--confirm", action="store_true", help="explicitly authorizes this remote send")
     discussion.add_argument("--stream", action="store_true", help="emit newline-delimited streaming events")
+    source = commands.add_parser("source", help="inspect user-authorized source material locally")
+    source.add_argument("action", choices=["inspect"])
+    source.add_argument("--kind", required=True, choices=["article", "video", "book"])
+    source.add_argument("--url")
+    source.add_argument("--title")
+    source.add_argument("--author")
+    source.add_argument("--excerpt")
+    source.add_argument("--source-language")
     session = commands.add_parser("session", help="manage local vault-aware discussion sessions")
     session.add_argument("action", choices=["start", "turn", "draft", "stage"])
     session.add_argument("--vault", required=True, type=Path)
@@ -88,6 +98,13 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         reply = discuss(agent, args.message, args.source_language)
         print(json.dumps({"reply": reply}, ensure_ascii=False))
+        return 0
+    if args.command == "source":
+        material = inspect_source(
+            kind=args.kind, url=args.url, title=args.title, author=args.author,
+            excerpt=args.excerpt, content_language=args.source_language,
+        )
+        print(json.dumps(asdict(material), ensure_ascii=False))
         return 0
     if args.command == "session":
         if not args.vault.is_dir():

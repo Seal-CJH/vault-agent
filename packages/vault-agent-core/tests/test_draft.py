@@ -73,6 +73,7 @@ class DraftTests(unittest.TestCase):
             store = SessionStore(root / ".sessions", index)
             session = store.create("en")
             session.messages.append({"role": "user", "content": "Keep this context insight."})
+            session.sources.append({"kind": "article", "title": "Source", "provenance": "https://example.test/source", "content_language": "en", "text": "Source text", "author": None, "warnings": []})
             store._save(session)
             provider = FakeProvider()
 
@@ -81,3 +82,4 @@ class DraftTests(unittest.TestCase):
             self.assertEqual(draft.title, "Conversation: Context capture")
             self.assertTrue(provider.confirmed)
             self.assertIn("Keep this context insight.", provider.messages[0]["content"])
+            self.assertIn("https://example.test/source", provider.messages[0]["content"])

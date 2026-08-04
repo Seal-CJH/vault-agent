@@ -3,6 +3,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from vault_agent.session import SessionStore
+from vault_agent.sources import SourceMaterial
 from vault_agent.vault_index import VaultIndex
 
 
@@ -12,6 +13,22 @@ class FakeProvider:
 
 
 class SessionTests(unittest.TestCase):
+    def test_attaches_inspected_source_material_to_the_vault_aware_turn(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            index = VaultIndex(root, root / ".vault-agent.sqlite")
+            index.rebuild()
+            material = SourceMaterial("article", "Source title", "Author", "https://example.test/a", "en", "Source body.")
+            store = SessionStore(root / ".sessions", index, source_inspector=lambda **_: material)
+            session = store.create("en")
+            provider = FakeProvider()
+
+            "".join(store.turn(session.id, provider, "Discuss https://example.test/a"))
+
+            self.assertIn("<source-material", provider.messages[0]["content"])
+            self.assertIn("Source body.", provider.messages[0]["content"])
+            self.assertEqual(store.load(session.id).sources[0]["provenance"], "https://example.test/a")
+
     def test_persists_a_draft_outside_the_vault(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

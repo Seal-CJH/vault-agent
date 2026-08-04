@@ -58,3 +58,7 @@ Settings are stored separately from the API key at `~/Library/Application Suppor
 4. Review the complete preview, then click **Confirm stage to Inbox**. Only this action writes a Markdown note, and it is restricted to `01_Inbox/conversations/`.
 
 The core never directly writes Questions, Claims, Decisions, Experiments, or Reviews. Those remain proposals for the human to promote under the vault’s own governance.
+
+## Source handling
+
+When a user sends a public article URL, the core locally extracts readable page text and records its URL, title, author, and language as provenance. Public video URLs are limited to page metadata: it never downloads media or creates a transcript. Book discussions use only the title, author, and excerpt supplied by the user; the core does not retrieve book text. If a source cannot be inspected, the discussion continues and asks for an excerpt or transcript instead of fabricating content.
