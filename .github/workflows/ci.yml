@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Core tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run policy and workflow tests
+        env:
+          PYTHONPATH: packages/vault-agent-core/src:packages/vault-agent-core/tests
+        run: python -m unittest discover -s packages/vault-agent-core/tests -q
+
+  obsidian-plugin:
+    name: Obsidian plugin build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/obsidian-plugin/pnpm-lock.yaml
+      - name: Enable package manager
+        run: corepack enable
+      - name: Install plugin dependencies
+        run: pnpm --dir apps/obsidian-plugin install --frozen-lockfile
+      - name: Build and type-check plugin
+        run: |
+          pnpm --dir apps/obsidian-plugin build
+          pnpm --dir apps/obsidian-plugin exec tsc --noEmit
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
