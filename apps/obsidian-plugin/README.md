@@ -26,5 +26,7 @@ Use **Review** for a local-only summary of Inbox candidates and Claims or Source
 
 The displayed model badge comes from `vault-agent provider show`; model keys and provider settings stay outside the plugin and outside the vault.
 
+In **Settings → Vault Agent**, select **DeepSeek V4 Flash** or **DeepSeek V4 Pro**, set **Thinking**, and choose the requested reasoning effort. Those controls call the local Core only: they update non-sensitive provider settings outside the vault and refresh the model badge. They affect subsequent confirmed remote turns; the API key remains in macOS Keychain.
+
 For public links, the pane first shows a local **Source parsed** status (title, kind, and detected language), then begins the model stream.
 For video links it also makes the limitation explicit: media is never downloaded or transcribed, so paste a transcript, excerpt, or your own notes before treating the video's content as evidence.

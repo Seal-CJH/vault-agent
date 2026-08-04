@@ -66,3 +66,13 @@ class RpcTests(unittest.TestCase):
         event = json.loads(destination.getvalue())
         self.assertEqual(event["id"], "req-3")
         self.assertEqual(event["result"]["model"], "deepseek-v4-flash")
+
+    def test_updates_non_sensitive_provider_settings_locally(self):
+        current = ProviderSettings()
+        with patch("vault_agent.rpc.load_settings", return_value=current), patch("vault_agent.rpc.save_settings") as save:
+            events = list(handle_request({"id": "provider", "method": "provider.update", "params": {"model": "deepseek-v4-pro", "thinking": True, "reasoning_effort": "high"}}))
+
+        self.assertEqual(events[0]["result"]["model"], "deepseek-v4-pro")
+        self.assertTrue(events[0]["result"]["thinking"])
+        self.assertEqual(events[0]["result"]["reasoning_effort"], "high")
+        save.assert_called_once_with(None, ProviderSettings("deepseek", "deepseek-v4-pro", True, "high"))

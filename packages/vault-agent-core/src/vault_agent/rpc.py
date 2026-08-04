@@ -11,7 +11,7 @@ from .draft import prepare_draft
 from .provider import provider_from_settings
 from .review import review_vault
 from .session import SessionStore
-from .settings import load_settings
+from .settings import ProviderSettings, load_settings, save_settings
 from .sources import inspect_source
 from .staging import stage_packet
 from .vault_index import VaultIndex
@@ -28,6 +28,20 @@ def handle_request(request: dict) -> Iterable[dict]:
         raise ValueError("request requires method and object params")
     if method == "provider.show":
         yield _completed(request_id, asdict(load_settings()))
+        return
+    if method == "provider.update":
+        current = load_settings()
+        thinking = params.get("thinking", current.thinking)
+        if not isinstance(thinking, bool):
+            raise ValueError("thinking must be a boolean")
+        settings = ProviderSettings(
+            provider=current.provider,
+            model=params.get("model", current.model),
+            thinking=thinking,
+            reasoning_effort=params.get("reasoning_effort", current.reasoning_effort),
+        )
+        save_settings(None, settings)
+        yield _completed(request_id, asdict(settings))
         return
     if method == "source.inspect":
         material = inspect_source(

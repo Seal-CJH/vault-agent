@@ -7,6 +7,7 @@ interface SessionSummary { id: string; preview: string; source_language: string;
 interface SessionRecord { id: string; source_language: string; messages: Array<{ role: string; content: string }>; }
 interface ReviewReport { total_notes: number; inbox_notes: string[]; claims_without_links: string[]; sources_without_links: string[]; }
 interface SourceSummary { kind: string; title: string; provenance: string; content_language?: string; }
+interface ProviderConfig { provider: string; model: string; thinking: boolean; reasoning_effort: string; }
 const DEFAULT_SETTINGS: VaultAgentSettings = { cliPath: "/Users/seal/Projects/Vault-Agent/scripts/vault-agent" };
 
 class VaultAgentView extends ItemView {
@@ -177,14 +178,42 @@ class BookIntakeModal extends Modal {
   }
   onClose() { this.contentEl.removeClass("vault-agent-book-modal"); this.contentEl.empty(); }
 }
-class VaultAgentSettingTab extends PluginSettingTab { constructor(app: App, private plugin: VaultAgentPlugin) { super(app, plugin); } display() { this.containerEl.empty(); new Setting(this.containerEl).setName("Vault Agent CLI path").setDesc("Absolute path to the local launcher; API keys are never stored here.").addText(text => text.setValue(this.plugin.settings.cliPath).onChange(async value => { this.plugin.settings.cliPath = value || DEFAULT_SETTINGS.cliPath; await this.plugin.saveSettings(); })); } }
+class VaultAgentSettingTab extends PluginSettingTab {
+  constructor(app: App, private plugin: VaultAgentPlugin) { super(app, plugin); }
+  display() {
+    this.containerEl.empty();
+    new Setting(this.containerEl).setName("Vault Agent CLI path").setDesc("Absolute path to the local launcher; API keys are never stored here.").addText(text => text.setValue(this.plugin.settings.cliPath).onChange(async value => { this.plugin.settings.cliPath = value || DEFAULT_SETTINGS.cliPath; await this.plugin.saveSettings(); }));
+    this.containerEl.createEl("h3", { text: "Model" });
+    const status = this.containerEl.createDiv({ text: "Loading local provider configuration…", cls: "setting-item-description" });
+    let current: ProviderConfig = { provider: "deepseek", model: "deepseek-v4-flash", thinking: false, reasoning_effort: "medium" };
+    let modelControl: { setValue(value: string): unknown } | null = null;
+    let thinkingControl: { setValue(value: boolean): unknown } | null = null;
+    let effortControl: { setValue(value: string): unknown } | null = null;
+    const apply = async (change: Partial<ProviderConfig>) => {
+      try {
+        current = await this.plugin.updateProvider(change);
+        modelControl?.setValue(current.model); thinkingControl?.setValue(current.thinking); effortControl?.setValue(current.reasoning_effort);
+        status.setText(`Active locally: ${current.model} · thinking ${current.thinking ? "on" : "off"} · ${current.reasoning_effort}`);
+      } catch (error) { status.setText(error instanceof Error ? error.message : String(error)); }
+    };
+    new Setting(this.containerEl).setName("Model").setDesc("Used for subsequent confirmed turns.").addDropdown(dropdown => { modelControl = dropdown; dropdown.addOption("deepseek-v4-flash", "DeepSeek V4 Flash").addOption("deepseek-v4-pro", "DeepSeek V4 Pro").setValue(current.model).onChange(value => void apply({ model: value })); });
+    new Setting(this.containerEl).setName("Thinking").setDesc("Enable the provider's thinking mode for subsequent confirmed turns.").addToggle(toggle => { thinkingControl = toggle; toggle.setValue(current.thinking).onChange(value => void apply({ thinking: value })); });
+    new Setting(this.containerEl).setName("Reasoning effort").setDesc("Controls the requested reasoning effort when supported by the selected model.").addDropdown(dropdown => { effortControl = dropdown; dropdown.addOption("low", "Low").addOption("medium", "Medium").addOption("high", "High").setValue(current.reasoning_effort).onChange(value => void apply({ reasoning_effort: value })); });
+    void this.plugin.providerConfig().then(config => { current = config; modelControl?.setValue(current.model); thinkingControl?.setValue(current.thinking); effortControl?.setValue(current.reasoning_effort); status.setText(`Active locally: ${current.model} · thinking ${current.thinking ? "on" : "off"} · ${current.reasoning_effort}`); }).catch(error => status.setText(error instanceof Error ? error.message : String(error)));
+  }
+}
 export default class VaultAgentPlugin extends Plugin {
   settings: VaultAgentSettings = DEFAULT_SETTINGS;
   async onload() { await this.loadSettings(); this.registerView(VIEW_TYPE, leaf => new VaultAgentView(leaf, this)); this.addRibbonIcon("messages-square", "Open Vault Agent", () => this.activateView()); this.addSettingTab(new VaultAgentSettingTab(this.app, this)); }
   async activateView() { const leaf = this.app.workspace.getRightLeaf(false); if (leaf) await leaf.setViewState({ type: VIEW_TYPE, active: true }); }
   async loadSettings() { this.settings = { ...DEFAULT_SETTINGS, ...(await this.loadData()) }; }
   async saveSettings() { await this.saveData(this.settings); }
-  providerConfig(): Promise<{ model: string; thinking: boolean }> { return this.rpcCall("provider.show", {}); }
+  providerConfig(): Promise<ProviderConfig> { return this.rpcCall("provider.show", {}); }
+  async updateProvider(change: Partial<ProviderConfig>): Promise<ProviderConfig> {
+    const config = await this.rpcCall<ProviderConfig>("provider.update", change);
+    this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => { if (leaf.view instanceof VaultAgentView) void leaf.view.refreshModel(); });
+    return config;
+  }
   async startSession(vault: string, sourceLanguage: string): Promise<string> { return (await this.rpcCall<{ session_id: string }>("session.start", { vault, source_language: sourceLanguage })).session_id; }
   attachSource(vault: string, sessionId: string, source: Record<string, unknown>): Promise<SourceSummary> { return this.rpcCall("session.attach_source", { vault, session_id: sessionId, ...source }); }
   prepareDraft(vault: string, sessionId: string): Promise<{ packet: string; title: string }> { return this.rpcCall("session.draft", { vault, session_id: sessionId, confirm_remote: true }); }
