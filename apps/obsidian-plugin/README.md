@@ -26,3 +26,4 @@ Use **Review** for a local-only summary of Inbox candidates and Claims or Source
 The displayed model badge comes from `vault-agent provider show`; model keys and provider settings stay outside the plugin and outside the vault.
 
 For public links, the pane first shows a local **Source parsed** status (title, kind, and detected language), then begins the model stream.
+For video links it also makes the limitation explicit: media is never downloaded or transcribed, so paste a transcript, excerpt, or your own notes before treating the video's content as evidence.
