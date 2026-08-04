@@ -1,6 +1,7 @@
 import unittest
 
-from vault_agent.provider import ProviderError, DeepSeekProvider
+from vault_agent.provider import ProviderError, DeepSeekProvider, provider_from_settings
+from vault_agent.settings import ProviderSettings
 
 
 class ProviderTests(unittest.TestCase):
@@ -24,3 +25,12 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(result, "response")
         self.assertEqual(captured["url"], "https://api.deepseek.com/chat/completions")
         self.assertEqual(captured["headers"]["Authorization"], "Bearer secret")
+
+    def test_builds_provider_from_saved_model_options(self):
+        provider = provider_from_settings(
+            "secret", ProviderSettings("deepseek", "deepseek-v4-pro", True, "high")
+        )
+
+        self.assertEqual(provider.model, "deepseek-v4-pro")
+        self.assertTrue(provider.thinking)
+        self.assertEqual(provider.reasoning_effort, "high")

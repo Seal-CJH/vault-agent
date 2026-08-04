@@ -26,3 +26,20 @@ PYTHONPATH=packages/vault-agent-core/src python3 -m vault_agent.cli configure-pr
 ```
 
 The command stores the key in macOS Keychain; it never writes the key into the vault, plugin, or Git repository. Provider calls require an explicit confirmation flag in the local core. The Obsidian panel remains a desktop-only installation skeleton while its discussion workflow is implemented.
+
+### Choose a model
+
+Inspect the active, non-sensitive settings:
+
+```bash
+PYTHONPATH=packages/vault-agent-core/src python3 -m vault_agent.cli provider show
+```
+
+Switch to DeepSeek Pro with thinking enabled:
+
+```bash
+PYTHONPATH=packages/vault-agent-core/src python3 -m vault_agent.cli provider set \
+  --model deepseek-v4-pro --thinking enabled --reasoning-effort high
+```
+
+Settings are stored separately from the API key at `~/Library/Application Support/Vault Agent/provider.json`. The Obsidian pane calls `vault-agent provider show` and displays the active model, thinking state, and reasoning effort; configure its CLI path in the plugin settings.
